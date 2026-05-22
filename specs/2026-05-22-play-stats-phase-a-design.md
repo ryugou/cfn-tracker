@@ -230,9 +230,11 @@ LEFT JOIN play_stats_snapshots ps
   ON ps.match_replay_id = m.replay_id
  AND ps.user_id = m.user_id
 WHERE m.user_id = ?
-  AND ps.character = ?
+  AND m.character = ?
 ORDER BY m.date DESC, m.time DESC;
 ```
+
+`ps.character = ?` ではなく **`m.character = ?` を WHERE に置く**ことに注意。LEFT JOIN の右側 (ps) を WHERE で絞ると `ps` が NULL の行が落ちて実質 INNER JOIN になり、スナップショット欠落 match が消える。キャラ条件は左側 (matches) で評価する。
 
 これにより「勝った試合の前後で DI 命中はどう動いたか」「連敗中の壁際時間が短い」等の分析が後段で可能。
 
@@ -242,7 +244,8 @@ ORDER BY m.date DESC, m.time DESC;
 
 `cmd.TrackingHandler.StartTracking` のポーリングループ内で、以下のタイミングに `/play` も取得する:
 
-1. **トラッキング開始直後 (基準値の 1 回)**: `gameTracker.GetUser` 成功後、`session.Matches` の有無に関わらず一度取得。`match_replay_id = NULL` で保存し、後段の差分計算の起点とする
+1. **トラッキング開始直後 (基準値の 1 回)**: `gameTracker.GetUser` 成功後、`session.Matches` の有無に関わらず一度取得。`match_replay_id = NULL` で保存し、後段の差分計算の起点とする。
+   - ただし、同じ `(user_id, character)` のスナップショットが直近 **30 分以内** に存在する場合は baseline 取得をスキップする (停止→再開を繰り返すたびに `match_replay_id = NULL` 行が無意味に積み上がるのを防ぐ)
 2. **新マッチ検知時**: `gameTracker.Poll` が新マッチを返した直後、SQL/txt の match 保存に成功した後で取得。`match_replay_id = match.ReplayID` で保存
 
 30 秒のティック自体は既存と変わらない。**新マッチがない時 (replay_id 不変) は `/play` も叩かない**ので、リクエスト負荷は新マッチ時のみ 2 倍 (`/battlelog/rank` + `/play`)。
@@ -304,7 +307,11 @@ T8 (`*t8.T8Tracker`) のときは型アサーションに失敗するのでス�
 
 サイドバーに「実績推移」リンクを追加し、ルート `/stats` を新設。
 
-T8 トラッキング中は **サイドバーから本リンクを非表示**にし、`/stats` を直接開いた場合は「SF6 限定の機能です」というプレースホルダを表示する。判定は `AuthMachineContext` の `context.game` を参照。
+サイドバーは **常時表示**にする。`AuthMachineContext.game` はアプリ再起動後 `undefined` に戻るため、それで非表示にすると DB に SF6 のスナップショットがあっても見えなくなる UX 上の問題が起きる。代わりに `/stats` ページ自身で以下を判定して中身を出し分ける:
+
+- DB にスナップショットが 1 件以上ある → ダッシュボードを表示 (ユーザー / キャラ / 期間セレクタで切替)
+- DB に 0 件 & SF6 トラッキング中 → 「最初のマッチを終えると記録されます」
+- DB に 0 件 & T8 トラッキング中 or 未選択 → 「SF6 限定の機能です。SF6 をトラッキングすると統計が表示されます」
 
 ### レイアウト概要
 
