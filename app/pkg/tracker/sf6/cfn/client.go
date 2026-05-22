@@ -17,6 +17,7 @@ import (
 
 type CFNClient interface {
 	GetBattleLog(ctx context.Context, cfn string) (*BattleLog, error)
+	GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, error)
 	Authenticate(ctx context.Context, email string, password string, statChan chan tracker.AuthStatus)
 }
 
@@ -60,6 +61,36 @@ func (c *Client) GetBattleLog(ctx context.Context, cfn string) (*BattleLog, erro
 		return nil, fmt.Errorf("fetch battle log, received status code %v", bl.Common.StatusCode)
 	}
 	return bl, nil
+}
+
+func (c *Client) GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, error) {
+	page := c.browser.Page.Context(ctx)
+	err := page.Navigate(fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/play", cfn))
+	if err != nil {
+		return nil, fmt.Errorf("navigate to play page: %w", err)
+	}
+	if err := page.WaitLoad(); err != nil {
+		return nil, fmt.Errorf("wait for play page to load: %w", err)
+	}
+	nextData, err := page.Element("#__NEXT_DATA__")
+	if err != nil {
+		return nil, fmt.Errorf("get __NEXT_DATA__ element: %w", err)
+	}
+	body, err := nextData.Text()
+	if err != nil {
+		return nil, fmt.Errorf("read __NEXT_DATA__ json: %w", err)
+	}
+
+	var doc PlayPageDoc
+	if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		return nil, fmt.Errorf("unmarshal play page: %w", err)
+	}
+
+	pp := &doc.Props.PageProps
+	if pp.Common.StatusCode != 200 {
+		return nil, fmt.Errorf("fetch play page, received status code %v", pp.Common.StatusCode)
+	}
+	return pp, nil
 }
 
 func (c *Client) Authenticate(ctx context.Context, email string, password string, statChan chan tracker.AuthStatus) {
