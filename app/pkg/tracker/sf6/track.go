@@ -141,3 +141,27 @@ func getLeagueFromLP(lp int) string {
 func (t *SF6Tracker) Authenticate(ctx context.Context, email string, password string, statChan chan tracker.AuthStatus) {
 	t.cfnClient.Authenticate(ctx, email, password, statChan)
 }
+
+// PlayStatsResult bundles the parsed /play data for storage. Character is
+// the display name (FavoriteCharacterName) to match the existing
+// matches.character column.
+type PlayStatsResult struct {
+	Character string
+	Stats     *cfn.BattleStats
+	BaseInfo  *cfn.BaseInfo
+}
+
+// PollPlayStats fetches a single /play snapshot for the given CFN user code.
+// It is intentionally not part of the tracker.GameTracker interface — only
+// SF6 has this concept — so callers must type-assert to *SF6Tracker.
+func (t *SF6Tracker) PollPlayStats(ctx context.Context, userCode string) (*PlayStatsResult, error) {
+	pp, err := t.cfnClient.GetPlayStats(ctx, userCode)
+	if err != nil {
+		return nil, fmt.Errorf("cfn: get play stats: %w", err)
+	}
+	return &PlayStatsResult{
+		Character: pp.FighterBannerInfo.FavoriteCharacterName,
+		Stats:     &pp.Play.BattleStats,
+		BaseInfo:  &pp.Play.BaseInfo,
+	}, nil
+}
