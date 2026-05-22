@@ -93,3 +93,29 @@ func (s *Storage) GetPlayStatsHistory(
 	}
 	return rows, nil
 }
+
+func (s *Storage) GetPlayStatsCharacters(ctx context.Context, userId string) ([]string, error) {
+	query := `
+		SELECT DISTINCT character
+		FROM play_stats_snapshots
+		WHERE user_id = ?
+		ORDER BY character ASC
+	`
+	rows, err := s.db.QueryContext(ctx, query, userId)
+	if err != nil {
+		return nil, fmt.Errorf("execute distinct characters query: %w", err)
+	}
+	defer rows.Close()
+	characters := make([]string, 0, 4)
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, fmt.Errorf("scan character row: %w", err)
+		}
+		characters = append(characters, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate character rows: %w", err)
+	}
+	return characters, nil
+}

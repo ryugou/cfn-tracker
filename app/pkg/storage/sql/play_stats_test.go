@@ -178,3 +178,25 @@ func TestGetPlayStatsHistoryFiltersAndLimit(t *testing.T) {
 		t.Errorf("other-user rows = %d, want 0", len(other))
 	}
 }
+
+func TestGetPlayStatsCharacters(t *testing.T) {
+	ctx := context.Background()
+	_ = store.SavePlayStats(ctx, sampleSnapshot("user-3", "JP", ""))
+	_ = store.SavePlayStats(ctx, sampleSnapshot("user-3", "Ken", "rA"))
+	_ = store.SavePlayStats(ctx, sampleSnapshot("user-3", "Ken", "rB"))
+	_ = store.SavePlayStats(ctx, sampleSnapshot("user-4", "Ryu", ""))
+
+	got, err := store.GetPlayStatsCharacters(ctx, "user-3")
+	if err != nil {
+		t.Fatalf("GetPlayStatsCharacters: %v", err)
+	}
+	want := map[string]bool{"JP": true, "Ken": true}
+	if len(got) != len(want) {
+		t.Fatalf("character count = %d, want %d (got %v)", len(got), len(want), got)
+	}
+	for _, c := range got {
+		if !want[c] {
+			t.Errorf("unexpected character: %q", c)
+		}
+	}
+}
