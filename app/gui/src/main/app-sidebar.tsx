@@ -54,6 +54,11 @@ const NavItems = [
     href: 'sessions'
   },
   {
+    icons: ['mdi:chart-line', 'mdi:chart-line'],
+    href: 'stats',
+    labelKey: 'statsNav'
+  },
+  {
     icons: ['clarity:sign-out-line', 'clarity:sign-out-solid'],
     href: 'output'
   },
@@ -70,7 +75,9 @@ function Nav() {
 
   return (
     <nav>
-      {NavItems.map(({ href, icons }) => {
+      {NavItems.map(item => {
+        const { href, icons } = item
+        const labelKey = 'labelKey' in item ? item.labelKey : href
         const selected = location.pathname.includes(href)
         return (
           <Link
@@ -92,7 +99,7 @@ function Nav() {
                 icon={selected ? icons[1] : icons[0]}
                 className='text-highlight mr-1 h-7 w-10 transition-colors'
               />
-              <span>{t(href)}</span>
+              <span>{t(labelKey)}</span>
             </div>
             {!cfg.sidebar && (
               <Icon
