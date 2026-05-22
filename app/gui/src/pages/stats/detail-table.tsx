@@ -28,30 +28,27 @@ export function DetailTable({ userId, character }: Props) {
 
   return (
     <div className='mt-6'>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className='text-white/70 hover:text-white text-sm'
-      >
+      <button onClick={() => setOpen(o => !o)} className='text-sm text-white/70 hover:text-white'>
         {open ? '▼' : '▶'} {t('statsExpandDetails')}
       </button>
 
       {open && (
         <div className='mt-3 overflow-x-auto'>
           {loading && <p className='text-white/60'>{t('loading')}</p>}
-          <table className='text-xs w-full'>
+          <table className='w-full text-xs'>
             <thead className='text-white/60'>
               <tr>
-                <th className='text-left p-1'>Date</th>
-                <th className='text-left p-1'>Time</th>
-                <th className='text-left p-1'>Char</th>
-                <th className='text-left p-1'>Opp</th>
-                <th className='text-left p-1'>W/L</th>
-                <th className='text-right p-1'>LPΔ</th>
-                <th className='text-right p-1'>DI</th>
-                <th className='text-right p-1'>DI被</th>
-                <th className='text-right p-1'>ジャパリ</th>
-                <th className='text-right p-1'>投抜</th>
-                <th className='text-right p-1'>壁秒</th>
+                <th className='p-1 text-left'>Date</th>
+                <th className='p-1 text-left'>Time</th>
+                <th className='p-1 text-left'>Char</th>
+                <th className='p-1 text-left'>Opp</th>
+                <th className='p-1 text-left'>W/L</th>
+                <th className='p-1 text-right'>LPΔ</th>
+                <th className='p-1 text-right'>DI</th>
+                <th className='p-1 text-right'>DI被</th>
+                <th className='p-1 text-right'>ジャパリ</th>
+                <th className='p-1 text-right'>投抜</th>
+                <th className='p-1 text-right'>壁秒</th>
               </tr>
             </thead>
             <tbody>
@@ -64,7 +61,9 @@ export function DetailTable({ userId, character }: Props) {
                   <td className='p-1'>{r.match.victory ? 'W' : 'L'}</td>
                   <td className='p-1 text-right'>{r.match.lpGain ?? '—'}</td>
                   <td className='p-1 text-right'>{r.stats?.driveImpact?.toFixed(1) ?? '—'}</td>
-                  <td className='p-1 text-right'>{r.stats?.receivedDriveImpact?.toFixed(1) ?? '—'}</td>
+                  <td className='p-1 text-right'>
+                    {r.stats?.receivedDriveImpact?.toFixed(1) ?? '—'}
+                  </td>
                   <td className='p-1 text-right'>{r.stats?.justParry?.toFixed(1) ?? '—'}</td>
                   <td className='p-1 text-right'>{r.stats?.throwTech?.toFixed(1) ?? '—'}</td>
                   <td className='p-1 text-right'>{r.stats?.cornerTime ?? '—'}</td>

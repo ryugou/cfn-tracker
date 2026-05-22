@@ -12,12 +12,12 @@ type Props = {
 export function KpiCard({ label, value, delta, tooltip }: Props) {
   const arrow = delta.direction === 'up' ? '↑' : delta.direction === 'down' ? '↓' : ''
   return (
-    <div className='rounded-lg bg-zinc-800/80 p-3 min-w-[120px]' title={tooltip}>
-      <div className='text-xs text-white/60 mb-1'>{label}</div>
+    <div className='min-w-[120px] rounded-lg bg-zinc-800/80 p-3' title={tooltip}>
+      <div className='mb-1 text-xs text-white/60'>{label}</div>
       <div className='text-xl text-white tabular-nums'>{value}</div>
       <div
         className={cn(
-          'text-xs mt-1',
+          'mt-1 text-xs',
           delta.direction === 'up' && 'text-emerald-400',
           delta.direction === 'down' && 'text-rose-400',
           delta.direction === 'flat' && 'text-white/40'

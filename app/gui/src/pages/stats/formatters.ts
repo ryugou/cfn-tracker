@@ -32,6 +32,6 @@ export function formatDelta(
   const sign = diff > 0 ? '+' : ''
   return {
     text: `${sign}${fmt(diff)}`,
-    direction: diff > 0 ? 'up' : 'down',
+    direction: diff > 0 ? 'up' : 'down'
   }
 }

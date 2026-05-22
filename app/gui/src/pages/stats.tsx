@@ -20,12 +20,12 @@ const kpiSpecs: Array<{
   value: (s: Snapshot) => number
   format: (n: number) => string
 }> = [
-  { key: 'kpiDriveImpact',  value: s => s.driveImpact,         format: formatPerMatchCount },
-  { key: 'kpiReceivedDi',   value: s => s.receivedDriveImpact, format: formatPerMatchCount },
-  { key: 'kpiJustParry',    value: s => s.justParry,           format: formatPerMatchCount },
-  { key: 'kpiThrowTech',    value: s => s.throwTech,           format: formatPerMatchCount },
-  { key: 'kpiCornerTime',   value: s => s.cornerTime,          format: formatSeconds },
-  { key: 'kpiSaLv3',        value: s => s.gaugeRateSALv3,      format: formatRate },
+  { key: 'kpiDriveImpact', value: s => s.driveImpact, format: formatPerMatchCount },
+  { key: 'kpiReceivedDi', value: s => s.receivedDriveImpact, format: formatPerMatchCount },
+  { key: 'kpiJustParry', value: s => s.justParry, format: formatPerMatchCount },
+  { key: 'kpiThrowTech', value: s => s.throwTech, format: formatPerMatchCount },
+  { key: 'kpiCornerTime', value: s => s.cornerTime, format: formatSeconds },
+  { key: 'kpiSaLv3', value: s => s.gaugeRateSALv3, format: formatRate }
 ]
 
 export function StatsPage() {
@@ -82,7 +82,7 @@ export function StatsPage() {
         <Page.Header>
           <Page.Title>{t('statsTitle')}</Page.Title>
         </Page.Header>
-        <p className='text-center text-white/60 mt-12'>
+        <p className='mt-12 text-center text-white/60'>
           {game === model.GameType.STREET_FIGHTER_6 ? t('statsEmptyTracking') : t('statsSf6Only')}
         </p>
       </Page.Root>
@@ -95,7 +95,7 @@ export function StatsPage() {
         <Page.Title>{t('statsTitle')}</Page.Title>
       </Page.Header>
 
-      <div className='flex gap-2 mb-4'>
+      <div className='mb-4 flex gap-2'>
         <select
           value={selectedUser}
           onChange={e => setSelectedUser(e.target.value)}
@@ -132,16 +132,20 @@ export function StatsPage() {
       {loading && <p className='text-white/60'>{t('loading')}</p>}
 
       {history.length === 0 && !loading && (
-        <p className='text-center text-white/60 mt-8'>{t('statsEmptyTracking')}</p>
+        <p className='mt-8 text-center text-white/60'>{t('statsEmptyTracking')}</p>
       )}
 
       {history.length > 0 && (
         <>
-          <div className='grid grid-cols-3 gap-3 mb-6'>
+          <div className='mb-6 grid grid-cols-3 gap-3'>
             {kpiSpecs.map(spec => {
               const curr = history[history.length - 1]
               const prev = history.length > 1 ? history[history.length - 2] : undefined
-              const delta = formatDelta(spec.value(curr), prev ? spec.value(prev) : undefined, spec.format)
+              const delta = formatDelta(
+                spec.value(curr),
+                prev ? spec.value(prev) : undefined,
+                spec.format
+              )
               return (
                 <KpiCard
                   key={spec.key}
