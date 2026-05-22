@@ -9,6 +9,7 @@ import { model } from '@model'
 import { KpiCard } from './stats/kpi-card'
 import { formatRate, formatPerMatchCount, formatSeconds, formatDelta } from './stats/formatters'
 import { TrendChart } from './stats/trend-chart'
+import { DetailTable } from './stats/detail-table'
 
 type Period = '7' | '30' | 'all'
 
@@ -153,6 +154,7 @@ export function StatsPage() {
             })}
           </div>
           <TrendChart history={history} />
+          <DetailTable userId={selectedUser} character={selectedChar} />
         </>
       )}
     </Page.Root>
