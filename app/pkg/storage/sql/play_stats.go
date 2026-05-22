@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
 
@@ -118,4 +120,63 @@ func (s *Storage) GetPlayStatsCharacters(ctx context.Context, userId string) ([]
 		return nil, fmt.Errorf("iterate character rows: %w", err)
 	}
 	return characters, nil
+}
+
+func (s *Storage) GetMatchesWithPlayStats(
+	ctx context.Context,
+	userId, character string,
+	limit uint8,
+	offset uint16,
+) ([]*model.MatchWithStats, error) {
+	matches, err := s.GetMatches(ctx, 0, userId, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("get matches for stats join: %w", err)
+	}
+	// Narrow to the requested character on the matches side (the WHERE
+	// belongs to m.character per spec §3 to preserve LEFT JOIN semantics).
+	filtered := make([]*model.Match, 0, len(matches))
+	for _, m := range matches {
+		if m.Character == character {
+			filtered = append(filtered, m)
+		}
+	}
+	if len(filtered) == 0 {
+		return []*model.MatchWithStats{}, nil
+	}
+
+	replayIds := make([]string, 0, len(filtered))
+	for _, m := range filtered {
+		if m.ReplayID != "" {
+			replayIds = append(replayIds, m.ReplayID)
+		}
+	}
+	statsByReplay := map[string]*model.PlayStatsSnapshot{}
+	if len(replayIds) > 0 {
+		query, args, err := sqlx.In(`
+			SELECT * FROM play_stats_snapshots
+			WHERE user_id = ? AND character = ? AND match_replay_id IN (?)
+		`, userId, character, replayIds)
+		if err != nil {
+			return nil, fmt.Errorf("prepare stats lookup: %w", err)
+		}
+		var rows []*model.PlayStatsSnapshot
+		if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+			return nil, fmt.Errorf("fetch stats for matches: %w", err)
+		}
+		for _, r := range rows {
+			if r.MatchReplayId.Valid {
+				statsByReplay[r.MatchReplayId.String] = r
+			}
+		}
+	}
+
+	out := make([]*model.MatchWithStats, 0, len(filtered))
+	for _, m := range filtered {
+		entry := &model.MatchWithStats{Match: *m}
+		if snap, ok := statsByReplay[m.ReplayID]; ok {
+			entry.Stats = snap
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }

@@ -200,3 +200,54 @@ func TestGetPlayStatsCharacters(t *testing.T) {
 		}
 	}
 }
+
+func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
+	ctx := context.Background()
+
+	if err := store.SaveUser(ctx, model.User{Code: "user-5", DisplayName: "tester"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "user-5")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	matchWithStats := model.Match{
+		UserId: "user-5", UserName: "tester", SessionId: sesh.Id,
+		ReplayID: "replay-with-stats", Character: "JP",
+		Date: "2026-05-22", Time: "10:00",
+	}
+	if err := store.SaveMatch(ctx, matchWithStats); err != nil {
+		t.Fatalf("SaveMatch: %v", err)
+	}
+	matchNoStats := model.Match{
+		UserId: "user-5", UserName: "tester", SessionId: sesh.Id,
+		ReplayID: "replay-no-stats", Character: "JP",
+		Date: "2026-05-22", Time: "10:30",
+	}
+	if err := store.SaveMatch(ctx, matchNoStats); err != nil {
+		t.Fatalf("SaveMatch: %v", err)
+	}
+	if err := store.SavePlayStats(ctx, sampleSnapshot("user-5", "JP", "replay-with-stats")); err != nil {
+		t.Fatalf("SavePlayStats: %v", err)
+	}
+
+	got, err := store.GetMatchesWithPlayStats(ctx, "user-5", "JP", 0, 0)
+	if err != nil {
+		t.Fatalf("GetMatchesWithPlayStats: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 matches via LEFT JOIN, got %d", len(got))
+	}
+
+	byReplay := map[string]*model.MatchWithStats{}
+	for _, m := range got {
+		byReplay[m.Match.ReplayID] = m
+	}
+	if byReplay["replay-with-stats"].Stats == nil {
+		t.Errorf("expected stats for replay-with-stats, got nil")
+	}
+	if byReplay["replay-no-stats"].Stats != nil {
+		t.Errorf("expected nil stats for replay-no-stats, got %+v", byReplay["replay-no-stats"].Stats)
+	}
+}
