@@ -106,14 +106,22 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 			recent, _ := ch.sqlDb.GetPlayStatsHistory(
 				ctx, user.Code, res.Character,
 				time.Now().Add(-30*time.Minute).Format("2006-01-02"),
-				"", 1,
+				"", 0,
 			)
 			shouldSave := true
-			if len(recent) > 0 {
-				if parsed, parseErr := time.Parse("2006-01-02 15:04:05", recent[len(recent)-1].SnapshotAt); parseErr == nil &&
-					time.Since(parsed) < 30*time.Minute {
+			// Results are ORDER BY snapshot_at ASC, so the last element is the newest.
+			// Iterate from newest backwards in case any rows have an unparseable timestamp.
+			for i := len(recent) - 1; i >= 0; i-- {
+				parsed, parseErr := time.Parse("2006-01-02 15:04:05", recent[i].SnapshotAt)
+				if parseErr != nil {
+					continue
+				}
+				if time.Since(parsed) < 30*time.Minute {
 					shouldSave = false
 				}
+				// Once we've inspected the newest parseable row we have the answer; older
+				// rows can only be older, so they can't improve the dedup decision.
+				break
 			}
 			if shouldSave {
 				snap := buildSnapshot(user.Code, res, "")
