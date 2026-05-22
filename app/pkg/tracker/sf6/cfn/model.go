@@ -679,6 +679,110 @@ type SearchResult struct {
 	ScriptLoader []any `json:"scriptLoader"`
 }
 
+// PlayPageProps mirrors the props.pageProps shape of the
+// /buckler/profile/<code>/play page. It is shared with BattleLog only at the
+// outer common / fighter_banner_info layer.
+type PlayPageProps struct {
+	Common            CommonProps `json:"common"`
+	FighterBannerInfo struct {
+		FavoriteCharacterID       int    `json:"favorite_character_id"`
+		FavoriteCharacterName     string `json:"favorite_character_name"`
+		FavoriteCharacterToolName string `json:"favorite_character_tool_name"`
+		PersonalInfo              struct {
+			FighterID string `json:"fighter_id"`
+			ShortID   int64  `json:"short_id"`
+		} `json:"personal_info"`
+	} `json:"fighter_banner_info"`
+	Play PlayProps `json:"play"`
+}
+
+// PlayPageDoc is the full __NEXT_DATA__ root for /play.
+type PlayPageDoc struct {
+	Props struct {
+		PageProps PlayPageProps `json:"pageProps"`
+	} `json:"props"`
+}
+
+type CommonProps struct {
+	StatusCode int  `json:"statusCode"`
+	IsError    bool `json:"isError"`
+}
+
+type PlayProps struct {
+	BattleStats BattleStats `json:"battle_stats"`
+	BaseInfo    BaseInfo    `json:"base_info"`
+}
+
+// BattleStats is the over-last-100-ranked-matches summary for the player's
+// favorite character. Counters with float types are averages per match; *_play_count
+// are cumulative totals; gauge_rate_* sum to 1.0 within each gauge.
+type BattleStats struct {
+	BattleHubMatchPlayCount          int     `json:"battle_hub_match_play_count"`
+	CasualMatchPlayCount             int     `json:"casual_match_play_count"`
+	CornerTime                       int     `json:"corner_time"`
+	CorneredTime                     int     `json:"cornered_time"`
+	CustomRoomMatchPlayCount         int     `json:"custom_room_match_play_count"`
+	DriveImpact                      float64 `json:"drive_impact"`
+	DriveImpactToDriveImpact         float64 `json:"drive_impact_to_drive_impact"`
+	DriveParry                       float64 `json:"drive_parry"`
+	DriveReversal                    float64 `json:"drive_reversal"`
+	GaugeRateCA                      float64 `json:"gauge_rate_ca"`
+	GaugeRateDriveArts               float64 `json:"gauge_rate_drive_arts"`
+	GaugeRateDriveGuard              float64 `json:"gauge_rate_drive_guard"`
+	GaugeRateDriveImpact             float64 `json:"gauge_rate_drive_impact"`
+	GaugeRateDriveOther              float64 `json:"gauge_rate_drive_other"`
+	GaugeRateDriveReversal           float64 `json:"gauge_rate_drive_reversal"`
+	GaugeRateDriveRushFromCancel     float64 `json:"gauge_rate_drive_rush_from_cancel"`
+	GaugeRateDriveRushFromParry      float64 `json:"gauge_rate_drive_rush_from_parry"`
+	GaugeRateSALv1                   float64 `json:"gauge_rate_sa_lv1"`
+	GaugeRateSALv2                   float64 `json:"gauge_rate_sa_lv2"`
+	GaugeRateSALv3                   float64 `json:"gauge_rate_sa_lv3"`
+	JustParry                        float64 `json:"just_parry"`
+	PunishCounter                    float64 `json:"punish_counter"`
+	RankMatchPlayCount               int     `json:"rank_match_play_count"`
+	ReceivedDriveImpact              float64 `json:"received_drive_impact"`
+	ReceivedDriveImpactToDriveImpact float64 `json:"received_drive_impact_to_drive_impact"`
+	ReceivedPunishCounter            float64 `json:"received_punish_counter"`
+	ReceivedStun                     float64 `json:"received_stun"`
+	ReceivedThrowCount               float64 `json:"received_throw_count"`
+	ReceivedThrowDriveParry          float64 `json:"received_throw_drive_parry"`
+	RivalAIAchievedChallengeCount    int     `json:"rival_ai_achieved_challenge_count"`
+	RivalAIHighestLeagueRank         int     `json:"rival_ai_highest_league_rank"`
+	RivalAIHighestLeagueRankTxt      string  `json:"rival_ai_highest_league_rank_txt"`
+	Stun                             float64 `json:"stun"`
+	TargetClearCount                 int     `json:"target_clear_count"`
+	ThrowCount                       float64 `json:"throw_count"`
+	ThrowDriveParry                  float64 `json:"throw_drive_parry"`
+	ThrowTech                        float64 `json:"throw_tech"`
+	TotalAllCharacterPlayPoint       int     `json:"total_all_character_play_point"`
+}
+
+type BaseInfo struct {
+	ContentPlayTimeList []ContentPlayTime `json:"content_play_time_list"`
+	EnjoyFightPoint     int               `json:"enjoy_fight_point"`
+	EnjoyTotalPoint     int               `json:"enjoy_total_point"`
+	EnjoyUserPoint      int               `json:"enjoy_user_point"`
+}
+
+type ContentPlayTime struct {
+	ContentType     int    `json:"content_type"`
+	ContentTypeName string `json:"content_type_name"`
+	PlayTime        int    `json:"play_time"` // seconds, cumulative
+}
+
+// ContentType IDs are stable enum values from Capcom.
+const (
+	ContentTypeWorldTour    = 1
+	ContentTypeRankedMatch  = 2
+	ContentTypeCasualMatch  = 3
+	ContentTypeCustomRoom   = 4
+	ContentTypeBattleHub    = 5
+	ContentTypeOfflineMatch = 6
+	ContentTypeArcade       = 7
+	ContentTypePractice     = 8
+	ContentTypeExtreme      = 9
+)
+
 var COUNTRIES = []string{
 	`Afghanistan`,
 	`Aland Islands`,

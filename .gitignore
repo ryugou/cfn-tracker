@@ -47,5 +47,5 @@ CFN Tracker*
 cfn-tracker*
 
 # Local investigation outputs (e.g. tools/dump-play-stats)
-play-stats-sample.json
+/play-stats-sample.json
 
