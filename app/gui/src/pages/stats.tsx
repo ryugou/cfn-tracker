@@ -1,0 +1,127 @@
+import React from 'react'
+import { useTranslation } from 'react-i18next'
+
+import * as Page from '@/ui/page'
+import { TrackingMachineContext } from '@/state/tracking-machine'
+import { AuthMachineContext } from '@/state/auth-machine'
+import { GetUsers, GetPlayStatsCharacters, GetPlayStatsHistory } from '@cmd/CommandHandler'
+import { model } from '@model'
+
+type Period = '7' | '30' | 'all'
+
+export function StatsPage() {
+  const { t } = useTranslation()
+  const trackingUser = TrackingMachineContext.useSelector(s => s.context.user)
+  const game = AuthMachineContext.useSelector(s => s.context.game)
+
+  const [users, setUsers] = React.useState<model.User[]>([])
+  const [characters, setCharacters] = React.useState<string[]>([])
+  const [selectedUser, setSelectedUser] = React.useState<string>('')
+  const [selectedChar, setSelectedChar] = React.useState<string>('')
+  const [period, setPeriod] = React.useState<Period>('30')
+  const [history, setHistory] = React.useState<model.PlayStatsSnapshot[]>([])
+  const [loading, setLoading] = React.useState(false)
+
+  React.useEffect(() => {
+    GetUsers().then(us => {
+      setUsers(us ?? [])
+      if (!selectedUser && trackingUser) {
+        setSelectedUser(trackingUser.code)
+      } else if (!selectedUser && us?.length) {
+        setSelectedUser(us[0].code)
+      }
+    })
+  }, [trackingUser])
+
+  React.useEffect(() => {
+    if (!selectedUser) return
+    GetPlayStatsCharacters(selectedUser).then(cs => {
+      setCharacters(cs ?? [])
+      if (cs?.length && !selectedChar) setSelectedChar(cs[0])
+    })
+  }, [selectedUser])
+
+  React.useEffect(() => {
+    if (!selectedUser || !selectedChar) return
+    setLoading(true)
+    const today = new Date()
+    let from = ''
+    if (period === '7' || period === '30') {
+      const days = period === '7' ? 7 : 30
+      const d = new Date(today.getTime() - days * 86400000)
+      from = d.toISOString().slice(0, 10)
+    }
+    GetPlayStatsHistory(selectedUser, selectedChar, from, '', 0)
+      .then(rows => setHistory(rows ?? []))
+      .finally(() => setLoading(false))
+  }, [selectedUser, selectedChar, period])
+
+  // Empty / placeholder states (spec §5)
+  if (!users.length && history.length === 0) {
+    return (
+      <Page.Root>
+        <Page.Header>
+          <Page.Title>{t('statsTitle')}</Page.Title>
+        </Page.Header>
+        <p className='text-center text-white/60 mt-12'>
+          {game === model.GameType.STREET_FIGHTER_6 ? t('statsEmptyTracking') : t('statsSf6Only')}
+        </p>
+      </Page.Root>
+    )
+  }
+
+  return (
+    <Page.Root>
+      <Page.Header>
+        <Page.Title>{t('statsTitle')}</Page.Title>
+      </Page.Header>
+
+      <div className='flex gap-2 mb-4'>
+        <select
+          value={selectedUser}
+          onChange={e => setSelectedUser(e.target.value)}
+          className='bg-zinc-800 px-2 py-1'
+        >
+          {users.map(u => (
+            <option key={u.code} value={u.code}>
+              {u.displayName}
+            </option>
+          ))}
+        </select>
+        <select
+          value={selectedChar}
+          onChange={e => setSelectedChar(e.target.value)}
+          className='bg-zinc-800 px-2 py-1'
+        >
+          {characters.map(c => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={period}
+          onChange={e => setPeriod(e.target.value as Period)}
+          className='bg-zinc-800 px-2 py-1'
+        >
+          <option value='7'>{t('statsPeriod7Days')}</option>
+          <option value='30'>{t('statsPeriod30Days')}</option>
+          <option value='all'>{t('statsPeriodAllTime')}</option>
+        </select>
+      </div>
+
+      {loading && <p className='text-white/60'>{t('loading')}</p>}
+
+      {history.length === 0 && !loading && (
+        <p className='text-center text-white/60 mt-8'>{t('statsEmptyTracking')}</p>
+      )}
+
+      {history.length > 0 && (
+        <pre className='text-xs text-white/60'>
+          {/* KPI cards (Task 15) and trend chart (Task 16) go here */}
+          {JSON.stringify(history[history.length - 1], null, 2).slice(0, 400)}
+        </pre>
+      )}
+    </Page.Root>
+  )
+}
