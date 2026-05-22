@@ -26,6 +26,7 @@ const (
 	tKeyErrCreateSession        ErrorLocalizationKey = "errCreateSession"
 	tKeyErrOpenResultsDirectory ErrorLocalizationKey = "errOpenResultsDirectory"
 	tKeyErrReadThemeCSS         ErrorLocalizationKey = "errReadThemeCSS"
+	tKeyErrGetPlayStats         ErrorLocalizationKey = "errGetPlayStats"
 )
 
 var AllErrorKeys = []struct {
@@ -50,6 +51,7 @@ var AllErrorKeys = []struct {
 	{tKeyErrCreateSession, string(tKeyErrCreateSession)},
 	{tKeyErrOpenResultsDirectory, string(tKeyErrOpenResultsDirectory)},
 	{tKeyErrReadThemeCSS, string(tKeyErrReadThemeCSS)},
+	{tKeyErrGetPlayStats, string(tKeyErrGetPlayStats)},
 }
 
 var (
@@ -71,6 +73,7 @@ var (
 	ErrCreateSession        = newError(tKeyErrCreateSession, errors.New("create session"))
 	ErrOpenResultsDirectory = newError(tKeyErrOpenResultsDirectory, errors.New("open results directory"))
 	ErrReadThemeCSS         = newError(tKeyErrReadThemeCSS, errors.New("read theme css"))
+	ErrGetPlayStats         = newError(tKeyErrGetPlayStats, errors.New("get play stats"))
 )
 
 type FGCTrackerError struct {

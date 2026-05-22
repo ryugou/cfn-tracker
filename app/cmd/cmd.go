@@ -170,6 +170,37 @@ func (ch *CommandHandler) SaveTheme(theme model.ThemeName) error {
 	return nil
 }
 
+func (ch *CommandHandler) GetPlayStatsHistory(
+	userId, character, from, to string,
+	limit uint16,
+) ([]*model.PlayStatsSnapshot, error) {
+	rows, err := ch.sqlDb.GetPlayStatsHistory(context.Background(), userId, character, from, to, limit)
+	if err != nil {
+		return nil, model.WrapError(model.ErrGetPlayStats, err)
+	}
+	return rows, nil
+}
+
+func (ch *CommandHandler) GetPlayStatsCharacters(userId string) ([]string, error) {
+	chars, err := ch.sqlDb.GetPlayStatsCharacters(context.Background(), userId)
+	if err != nil {
+		return nil, model.WrapError(model.ErrGetPlayStats, err)
+	}
+	return chars, nil
+}
+
+func (ch *CommandHandler) GetMatchesWithPlayStats(
+	userId, character string,
+	limit uint8,
+	offset uint16,
+) ([]*model.MatchWithStats, error) {
+	rows, err := ch.sqlDb.GetMatchesWithPlayStats(context.Background(), userId, character, limit, offset)
+	if err != nil {
+		return nil, model.WrapError(model.ErrGetPlayStats, err)
+	}
+	return rows, nil
+}
+
 func (ch *CommandHandler) GetFGCTrackerErrorModelUnused() *model.FGCTrackerError {
 	return nil
 }
