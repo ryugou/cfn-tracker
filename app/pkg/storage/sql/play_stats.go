@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jmoiron/sqlx"
-
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
 
@@ -83,15 +81,12 @@ func (s *Storage) GetPlayStatsHistory(
 	if limit > 0 {
 		limitClause = fmt.Sprintf("LIMIT %d", limit)
 	}
-	query, args, err := sqlx.In(fmt.Sprintf(`
+	query := fmt.Sprintf(`
 		SELECT * FROM play_stats_snapshots
 		WHERE %s
 		ORDER BY snapshot_at ASC
 		%s
-	`, strings.Join(wheres, " AND "), limitClause), args...)
-	if err != nil {
-		return nil, fmt.Errorf("prepare play stats query: %w", err)
-	}
+	`, strings.Join(wheres, " AND "), limitClause)
 	var rows []*model.PlayStatsSnapshot
 	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("execute play stats query: %w", err)

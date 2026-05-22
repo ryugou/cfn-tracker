@@ -130,3 +130,51 @@ func TestSaveBaselineSnapshot(t *testing.T) {
 		t.Errorf("baseline snapshot should have NULL match_replay_id, got %q", got[0].MatchReplayId.String)
 	}
 }
+
+func TestGetPlayStatsHistoryFiltersAndLimit(t *testing.T) {
+	ctx := context.Background()
+
+	// Three snapshots for the same user/character — we only need the count
+	// to exceed our LIMIT; date filters use the inserted DEFAULT.
+	for i := 0; i < 3; i++ {
+		if err := store.SavePlayStats(ctx, sampleSnapshot("user-filter", "JP", "")); err != nil {
+			t.Fatalf("SavePlayStats: %v", err)
+		}
+	}
+
+	// 1) limit > 0 caps the result set
+	limited, err := store.GetPlayStatsHistory(ctx, "user-filter", "JP", "", "", 2)
+	if err != nil {
+		t.Fatalf("GetPlayStatsHistory(limit=2): %v", err)
+	}
+	if len(limited) != 2 {
+		t.Errorf("limited rows = %d, want 2", len(limited))
+	}
+
+	// 2) "from" in the future excludes everything
+	none, err := store.GetPlayStatsHistory(ctx, "user-filter", "JP", "2099-01-01", "", 0)
+	if err != nil {
+		t.Fatalf("GetPlayStatsHistory(from=future): %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("future-from rows = %d, want 0", len(none))
+	}
+
+	// 3) "to" in the far past excludes everything
+	noneOld, err := store.GetPlayStatsHistory(ctx, "user-filter", "JP", "", "1970-01-01", 0)
+	if err != nil {
+		t.Fatalf("GetPlayStatsHistory(to=past): %v", err)
+	}
+	if len(noneOld) != 0 {
+		t.Errorf("past-to rows = %d, want 0", len(noneOld))
+	}
+
+	// 4) Filtering on a different user yields nothing
+	other, err := store.GetPlayStatsHistory(ctx, "user-other", "JP", "", "", 0)
+	if err != nil {
+		t.Fatalf("GetPlayStatsHistory(other user): %v", err)
+	}
+	if len(other) != 0 {
+		t.Errorf("other-user rows = %d, want 0", len(other))
+	}
+}
