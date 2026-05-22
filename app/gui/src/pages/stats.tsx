@@ -6,8 +6,25 @@ import { TrackingMachineContext } from '@/state/tracking-machine'
 import { AuthMachineContext } from '@/state/auth-machine'
 import { GetUsers, GetPlayStatsCharacters, GetPlayStatsHistory } from '@cmd/CommandHandler'
 import { model } from '@model'
+import { KpiCard } from './stats/kpi-card'
+import { formatRate, formatPerMatchCount, formatSeconds, formatDelta } from './stats/formatters'
 
 type Period = '7' | '30' | 'all'
+
+type Snapshot = model.PlayStatsSnapshot
+
+const kpiSpecs: Array<{
+  key: string
+  value: (s: Snapshot) => number
+  format: (n: number) => string
+}> = [
+  { key: 'kpiDriveImpact',  value: s => s.driveImpact,         format: formatPerMatchCount },
+  { key: 'kpiReceivedDi',   value: s => s.receivedDriveImpact, format: formatPerMatchCount },
+  { key: 'kpiJustParry',    value: s => s.justParry,           format: formatPerMatchCount },
+  { key: 'kpiThrowTech',    value: s => s.throwTech,           format: formatPerMatchCount },
+  { key: 'kpiCornerTime',   value: s => s.cornerTime,          format: formatSeconds },
+  { key: 'kpiSaLv3',        value: s => s.gaugeRateSALv3,      format: formatRate },
+]
 
 export function StatsPage() {
   const { t } = useTranslation()
@@ -117,10 +134,24 @@ export function StatsPage() {
       )}
 
       {history.length > 0 && (
-        <pre className='text-xs text-white/60'>
-          {/* KPI cards (Task 15) and trend chart (Task 16) go here */}
-          {JSON.stringify(history[history.length - 1], null, 2).slice(0, 400)}
-        </pre>
+        <>
+          <div className='grid grid-cols-3 gap-3 mb-6'>
+            {kpiSpecs.map(spec => {
+              const curr = history[history.length - 1]
+              const prev = history.length > 1 ? history[history.length - 2] : undefined
+              const delta = formatDelta(spec.value(curr), prev ? spec.value(prev) : undefined, spec.format)
+              return (
+                <KpiCard
+                  key={spec.key}
+                  label={t(spec.key)}
+                  value={spec.format(spec.value(curr))}
+                  delta={delta}
+                  tooltip={t('statsTooltip')}
+                />
+              )
+            })}
+          </div>
+        </>
       )}
     </Page.Root>
   )
