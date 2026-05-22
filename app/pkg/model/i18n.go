@@ -114,4 +114,23 @@ type Localization struct {
 	ErrCreateSession         string `json:"errCreateSession"`
 	ErrOpenResultsDirectory  string `json:"errOpenResultsDirectory"`
 	ErrReadThemeCSS          string `json:"errReadThemeCSS"`
+	StatsNav                 string `json:"statsNav"`
+	StatsTitle               string `json:"statsTitle"`
+	StatsPeriod7Days         string `json:"statsPeriod7Days"`
+	StatsPeriod30Days        string `json:"statsPeriod30Days"`
+	StatsPeriodAllTime       string `json:"statsPeriodAllTime"`
+	StatsCharacter           string `json:"statsCharacter"`
+	StatsUser                string `json:"statsUser"`
+	StatsPreviousDelta       string `json:"statsPreviousDelta"`
+	StatsTooltip             string `json:"statsTooltip"`
+	StatsEmptyTracking       string `json:"statsEmptyTracking"`
+	StatsSf6Only             string `json:"statsSf6Only"`
+	StatsExpandDetails       string `json:"statsExpandDetails"`
+	KpiDriveImpact           string `json:"kpiDriveImpact"`
+	KpiReceivedDi            string `json:"kpiReceivedDi"`
+	KpiJustParry             string `json:"kpiJustParry"`
+	KpiThrowTech             string `json:"kpiThrowTech"`
+	KpiCornerTime            string `json:"kpiCornerTime"`
+	KpiSaLv3                 string `json:"kpiSaLv3"`
+	ErrGetPlayStats          string `json:"errGetPlayStats"`
 }
