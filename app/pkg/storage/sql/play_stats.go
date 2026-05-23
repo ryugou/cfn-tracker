@@ -128,31 +128,37 @@ func (s *Storage) GetMatchesWithPlayStats(
 	limit uint8,
 	offset uint16,
 ) ([]*model.MatchWithStats, error) {
-	matches, err := s.GetMatches(ctx, 0, userId, limit, offset)
-	if err != nil {
+	// Filter character at the SQL layer so pagination (LIMIT/OFFSET) is
+	// applied to character-scoped rows. Filtering after a full-character
+	// fetch caused the requested page to be drained by rows for other
+	// characters, returning an empty slice for the selected one.
+	pagination := ""
+	if limit != 0 || offset != 0 {
+		pagination = fmt.Sprintf("LIMIT %d OFFSET %d", limit, offset)
+	}
+	query := fmt.Sprintf(`
+		SELECT * FROM matches
+		WHERE user_id = ? AND character = ?
+		ORDER BY date DESC, time DESC
+		%s
+	`, pagination)
+	var matches []*model.Match
+	if err := s.db.SelectContext(ctx, &matches, query, userId, character); err != nil {
 		return nil, fmt.Errorf("get matches for stats join: %w", err)
 	}
-	// Narrow to the requested character on the matches side (the WHERE
-	// belongs to m.character per spec §3 to preserve LEFT JOIN semantics).
-	filtered := make([]*model.Match, 0, len(matches))
-	for _, m := range matches {
-		if m.Character == character {
-			filtered = append(filtered, m)
-		}
-	}
-	if len(filtered) == 0 {
+	if len(matches) == 0 {
 		return []*model.MatchWithStats{}, nil
 	}
 
-	replayIds := make([]string, 0, len(filtered))
-	for _, m := range filtered {
+	replayIds := make([]string, 0, len(matches))
+	for _, m := range matches {
 		if m.ReplayID != "" {
 			replayIds = append(replayIds, m.ReplayID)
 		}
 	}
 	statsByReplay := map[string]*model.PlayStatsSnapshot{}
 	if len(replayIds) > 0 {
-		query, args, err := sqlx.In(`
+		q, args, err := sqlx.In(`
 			SELECT * FROM play_stats_snapshots
 			WHERE user_id = ? AND character = ? AND match_replay_id IN (?)
 		`, userId, character, replayIds)
@@ -160,7 +166,7 @@ func (s *Storage) GetMatchesWithPlayStats(
 			return nil, fmt.Errorf("prepare stats lookup: %w", err)
 		}
 		var rows []*model.PlayStatsSnapshot
-		if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		if err := s.db.SelectContext(ctx, &rows, q, args...); err != nil {
 			return nil, fmt.Errorf("fetch stats for matches: %w", err)
 		}
 		for _, r := range rows {
@@ -170,8 +176,8 @@ func (s *Storage) GetMatchesWithPlayStats(
 		}
 	}
 
-	out := make([]*model.MatchWithStats, 0, len(filtered))
-	for _, m := range filtered {
+	out := make([]*model.MatchWithStats, 0, len(matches))
+	for _, m := range matches {
 		entry := &model.MatchWithStats{Match: *m}
 		if snap, ok := statsByReplay[m.ReplayID]; ok {
 			entry.Stats = snap

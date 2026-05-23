@@ -376,3 +376,77 @@ func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
 		t.Errorf("expected nil stats for replay-no-stats, got %+v", byReplay["replay-no-stats"].Stats)
 	}
 }
+
+func TestGetMatchesWithPlayStatsFiltersCharacterInSQL(t *testing.T) {
+	ctx := context.Background()
+	if err := store.SaveUser(ctx, model.User{Code: "char-u", DisplayName: "cu"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "char-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	// Save 1 JP match (older) + 2 Ken matches (newer)
+	matches := []model.Match{
+		{UserId: "char-u", UserName: "cu", SessionId: sesh.Id, ReplayID: "char-jp-1", Character: "JP", Date: "2026-05-23", Time: "10:00"},
+		{UserId: "char-u", UserName: "cu", SessionId: sesh.Id, ReplayID: "char-ken-1", Character: "Ken", Date: "2026-05-23", Time: "11:00"},
+		{UserId: "char-u", UserName: "cu", SessionId: sesh.Id, ReplayID: "char-ken-2", Character: "Ken", Date: "2026-05-23", Time: "12:00"},
+	}
+	for _, m := range matches {
+		if err := store.SaveMatch(ctx, m); err != nil {
+			t.Fatalf("SaveMatch: %v", err)
+		}
+	}
+
+	// limit=2: with the old Go-side filter this would have returned 0 JP rows
+	// (latest 2 are Ken). New SQL-side filter must return the JP row.
+	got, err := store.GetMatchesWithPlayStats(ctx, "char-u", "JP", 2, 0)
+	if err != nil {
+		t.Fatalf("GetMatchesWithPlayStats: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 JP match, got %d", len(got))
+	}
+	if got[0].Match.Character != "JP" {
+		t.Errorf("character = %q, want JP", got[0].Match.Character)
+	}
+}
+
+func TestGetMatchesWithPlayStatsPagination(t *testing.T) {
+	ctx := context.Background()
+	if err := store.SaveUser(ctx, model.User{Code: "page-u", DisplayName: "pu"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "page-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	// Two JP matches: newer first by ORDER BY date DESC, time DESC.
+	matches := []model.Match{
+		{UserId: "page-u", UserName: "pu", SessionId: sesh.Id, ReplayID: "page-jp-1", Character: "JP", Date: "2026-05-22", Time: "10:00"},
+		{UserId: "page-u", UserName: "pu", SessionId: sesh.Id, ReplayID: "page-jp-2", Character: "JP", Date: "2026-05-23", Time: "12:00"},
+	}
+	for _, m := range matches {
+		if err := store.SaveMatch(ctx, m); err != nil {
+			t.Fatalf("SaveMatch: %v", err)
+		}
+	}
+
+	// limit=1 offset=0 → newest JP match (page-jp-2)
+	first, err := store.GetMatchesWithPlayStats(ctx, "page-u", "JP", 1, 0)
+	if err != nil {
+		t.Fatalf("GetMatchesWithPlayStats(0): %v", err)
+	}
+	if len(first) != 1 || first[0].Match.ReplayID != "page-jp-2" {
+		t.Fatalf("page 0: want [page-jp-2], got %+v", first)
+	}
+
+	// limit=1 offset=1 → second JP match (page-jp-1)
+	second, err := store.GetMatchesWithPlayStats(ctx, "page-u", "JP", 1, 1)
+	if err != nil {
+		t.Fatalf("GetMatchesWithPlayStats(1): %v", err)
+	}
+	if len(second) != 1 || second[0].Match.ReplayID != "page-jp-1" {
+		t.Fatalf("page 1: want [page-jp-1], got %+v", second)
+	}
+}
