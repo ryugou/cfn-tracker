@@ -95,72 +95,74 @@ export function StatsPage() {
         <Page.Title>{t('statsTitle')}</Page.Title>
       </Page.Header>
 
-      <div className='mb-4 flex items-center gap-2'>
-        <select
-          value={selectedUser}
-          onChange={e => setSelectedUser(e.target.value)}
-          className='h-8 min-w-[140px] rounded bg-zinc-800 px-2'
-        >
-          {users.map(u => (
-            <option key={u.code} value={u.code}>
-              {u.displayName}
-            </option>
-          ))}
-        </select>
-        <select
-          value={selectedChar}
-          onChange={e => setSelectedChar(e.target.value)}
-          className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
-        >
-          {characters.map(c => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          value={period}
-          onChange={e => setPeriod(e.target.value as Period)}
-          className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
-        >
-          <option value='7'>{t('statsPeriod7Days')}</option>
-          <option value='30'>{t('statsPeriod30Days')}</option>
-          <option value='all'>{t('statsPeriodAllTime')}</option>
-        </select>
+      <div className='h-full overflow-y-auto px-8 py-4'>
+        <div className='mb-4 flex items-center gap-2'>
+          <select
+            value={selectedUser}
+            onChange={e => setSelectedUser(e.target.value)}
+            className='h-8 min-w-[140px] rounded bg-zinc-800 px-2'
+          >
+            {users.map(u => (
+              <option key={u.code} value={u.code}>
+                {u.displayName}
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedChar}
+            onChange={e => setSelectedChar(e.target.value)}
+            className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
+          >
+            {characters.map(c => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select
+            value={period}
+            onChange={e => setPeriod(e.target.value as Period)}
+            className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
+          >
+            <option value='7'>{t('statsPeriod7Days')}</option>
+            <option value='30'>{t('statsPeriod30Days')}</option>
+            <option value='all'>{t('statsPeriodAllTime')}</option>
+          </select>
+        </div>
+
+        {loading && <p className='text-white/60'>{t('loading')}</p>}
+
+        {history.length === 0 && !loading && (
+          <p className='mt-8 text-center text-white/60'>{t('statsEmptyTracking')}</p>
+        )}
+
+        {history.length > 0 && (
+          <>
+            <div className='mb-6 grid grid-cols-3 gap-3'>
+              {kpiSpecs.map(spec => {
+                const curr = history[history.length - 1]
+                const prev = history.length > 1 ? history[history.length - 2] : undefined
+                const delta = formatDelta(
+                  spec.value(curr),
+                  prev ? spec.value(prev) : undefined,
+                  spec.format
+                )
+                return (
+                  <KpiCard
+                    key={spec.key}
+                    label={t(spec.key)}
+                    value={spec.format(spec.value(curr))}
+                    delta={delta}
+                    tooltip={t('statsTooltip')}
+                  />
+                )
+              })}
+            </div>
+            <TrendChart history={history} />
+            <DetailTable userId={selectedUser} character={selectedChar} />
+          </>
+        )}
       </div>
-
-      {loading && <p className='text-white/60'>{t('loading')}</p>}
-
-      {history.length === 0 && !loading && (
-        <p className='mt-8 text-center text-white/60'>{t('statsEmptyTracking')}</p>
-      )}
-
-      {history.length > 0 && (
-        <>
-          <div className='mb-6 grid grid-cols-3 gap-3'>
-            {kpiSpecs.map(spec => {
-              const curr = history[history.length - 1]
-              const prev = history.length > 1 ? history[history.length - 2] : undefined
-              const delta = formatDelta(
-                spec.value(curr),
-                prev ? spec.value(prev) : undefined,
-                spec.format
-              )
-              return (
-                <KpiCard
-                  key={spec.key}
-                  label={t(spec.key)}
-                  value={spec.format(spec.value(curr))}
-                  delta={delta}
-                  tooltip={t('statsTooltip')}
-                />
-              )
-            })}
-          </div>
-          <TrendChart history={history} />
-          <DetailTable userId={selectedUser} character={selectedChar} />
-        </>
-      )}
     </Page.Root>
   )
 }
