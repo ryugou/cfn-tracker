@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -33,12 +34,12 @@ func NewClient(browser *browser.Browser) *Client {
 }
 
 func (c *Client) GetBattleLogPage(ctx context.Context, cfn string, page int) (*BattleLog, error) {
-	url := fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/battlelog/rank", cfn)
+	pageURL := fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/battlelog/rank", url.PathEscape(cfn))
 	if page > 1 {
-		url = fmt.Sprintf("%s?page=%d", url, page)
+		pageURL = fmt.Sprintf("%s?page=%d", pageURL, page)
 	}
 	p := c.browser.Page.Context(ctx)
-	if err := p.Navigate(url); err != nil {
+	if err := p.Navigate(pageURL); err != nil {
 		return nil, fmt.Errorf("navigate to cfn: %w", err)
 	}
 	if err := p.WaitLoad(); err != nil {
@@ -69,7 +70,7 @@ func (c *Client) GetBattleLog(ctx context.Context, cfn string) (*BattleLog, erro
 
 func (c *Client) GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, error) {
 	page := c.browser.Page.Context(ctx)
-	err := page.Navigate(fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/play", cfn))
+	err := page.Navigate(fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/play", url.PathEscape(cfn)))
 	if err != nil {
 		return nil, fmt.Errorf("navigate to play page: %w", err)
 	}
