@@ -8,6 +8,8 @@ export function GetFGCTrackerErrorModelUnused():Promise<model.FGCTrackerError>;
 
 export function GetGuiConfig():Promise<model.GUIConfig>;
 
+export function GetLatestMatchForUserAndCharacter(arg1:string,arg2:string):Promise<model.Match>;
+
 export function GetMatches(arg1:number,arg2:string,arg3:number,arg4:number):Promise<Array<model.Match>>;
 
 export function GetMatchesWithPlayStats(arg1:string,arg2:string,arg3:number,arg4:number):Promise<Array<model.MatchWithStats>>;

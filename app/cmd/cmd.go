@@ -194,6 +194,18 @@ func (ch *CommandHandler) GetPlayStatsCharacters(userId string) ([]string, error
 	return chars, nil
 }
 
+// GetLatestMatchForUserAndCharacter returns the most recent stored match for
+// the (user, character) pair, or nil. Used by the tracking screen's character
+// selector to repaint summary stats when the user pivots to a character that
+// isn't currently being played.
+func (ch *CommandHandler) GetLatestMatchForUserAndCharacter(userId, character string) (*model.Match, error) {
+	match, err := ch.sqlDb.GetLatestMatchForUserAndCharacter(context.Background(), userId, character)
+	if err != nil {
+		return nil, model.WrapError(model.ErrGetMatches, err)
+	}
+	return match, nil
+}
+
 func (ch *CommandHandler) GetMatchesWithPlayStats(
 	userId, character string,
 	limit uint8,

@@ -114,6 +114,27 @@ func (s *Storage) GetLatestMatchForUser(ctx context.Context, userId string) (*mo
 	return matches[0], nil
 }
 
+// GetLatestMatchForUserAndCharacter returns the most recent match for the
+// given user/character combination, or nil if none exists. Used by the
+// tracking screen's character selector to pivot the live stats to a
+// non-active character without waiting for a new match.
+func (s *Storage) GetLatestMatchForUserAndCharacter(ctx context.Context, userId, character string) (*model.Match, error) {
+	query := `
+		SELECT * FROM matches
+		WHERE user_id = ? AND character = ?
+		ORDER BY date DESC, time DESC
+		LIMIT 1
+	`
+	var matches []*model.Match
+	if err := s.db.SelectContext(ctx, &matches, query, userId, character); err != nil {
+		return nil, fmt.Errorf("select latest match for character: %w", err)
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	return matches[0], nil
+}
+
 // GetMatchCharactersForUser returns the distinct characters the user has
 // actually played in tracked matches, sorted alphabetically. This is the
 // correct source for a per-character UI selector — DISTINCT against

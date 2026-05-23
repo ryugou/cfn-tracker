@@ -359,6 +359,68 @@ func TestGetLatestMatchForUser(t *testing.T) {
 	}
 }
 
+func TestGetLatestMatchForUserAndCharacter(t *testing.T) {
+	ctx := context.Background()
+
+	if err := store.SaveUser(ctx, model.User{Code: "latest-char-u", DisplayName: "lcu"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "latest-char-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// JP has an older and newer match; Ken has a single newest-of-all match.
+	// Querying for JP must return the newer JP match (not the absolute latest).
+	matches := []model.Match{
+		{
+			UserId: "latest-char-u", UserName: "lcu", SessionId: sesh.Id,
+			ReplayID: "lc-jp-old", Character: "JP",
+			Date: "2026-05-20", Time: "10:00",
+			Wins: 3, Losses: 1,
+		},
+		{
+			UserId: "latest-char-u", UserName: "lcu", SessionId: sesh.Id,
+			ReplayID: "lc-jp-new", Character: "JP",
+			Date: "2026-05-22", Time: "12:00",
+			Wins: 4, Losses: 1,
+		},
+		{
+			UserId: "latest-char-u", UserName: "lcu", SessionId: sesh.Id,
+			ReplayID: "lc-ken-latest", Character: "Ken",
+			Date: "2026-05-23", Time: "09:00",
+			Wins: 1, Losses: 0,
+		},
+	}
+	for _, m := range matches {
+		if err := store.SaveMatch(ctx, m); err != nil {
+			t.Fatalf("SaveMatch %s: %v", m.ReplayID, err)
+		}
+	}
+
+	got, err := store.GetLatestMatchForUserAndCharacter(ctx, "latest-char-u", "JP")
+	if err != nil {
+		t.Fatalf("GetLatestMatchForUserAndCharacter: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected JP match, got nil")
+	}
+	if got.ReplayID != "lc-jp-new" {
+		t.Errorf("ReplayID = %q, want lc-jp-new (newer JP, even though Ken is overall newer)", got.ReplayID)
+	}
+	if got.Wins != 4 {
+		t.Errorf("Wins = %d, want 4", got.Wins)
+	}
+
+	none, err := store.GetLatestMatchForUserAndCharacter(ctx, "latest-char-u", "Ryu")
+	if err != nil {
+		t.Fatalf("GetLatestMatchForUserAndCharacter(unknown char): %v", err)
+	}
+	if none != nil {
+		t.Errorf("expected nil for unplayed character, got %+v", none)
+	}
+}
+
 func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
 	ctx := context.Background()
 
