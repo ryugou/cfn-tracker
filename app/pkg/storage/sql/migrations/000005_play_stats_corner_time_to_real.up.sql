@@ -1,4 +1,9 @@
-CREATE TABLE IF NOT EXISTS play_stats_snapshots (
+-- SQLite has no ALTER COLUMN, so rebuild play_stats_snapshots with REAL for
+-- corner_time / cornered_time (per-match averages return decimals like 2.8s).
+-- INSERT ... SELECT preserves existing rows; index drops with the old table
+-- and gets recreated below.
+
+CREATE TABLE play_stats_snapshots_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   character TEXT NOT NULL,
@@ -7,8 +12,8 @@ CREATE TABLE IF NOT EXISTS play_stats_snapshots (
 
   battle_hub_match_play_count INTEGER,
   casual_match_play_count INTEGER,
-  corner_time INTEGER,
-  cornered_time INTEGER,
+  corner_time REAL,
+  cornered_time REAL,
   custom_room_match_play_count INTEGER,
   drive_impact REAL,
   drive_impact_to_drive_impact REAL,
@@ -58,6 +63,13 @@ CREATE TABLE IF NOT EXISTS play_stats_snapshots (
   practice_seconds INTEGER,
   extreme_seconds INTEGER
 );
+
+INSERT INTO play_stats_snapshots_new
+  SELECT * FROM play_stats_snapshots;
+
+DROP TABLE play_stats_snapshots;
+
+ALTER TABLE play_stats_snapshots_new RENAME TO play_stats_snapshots;
 
 CREATE INDEX IF NOT EXISTS idx_play_stats_user_char_at
   ON play_stats_snapshots(user_id, character, snapshot_at);

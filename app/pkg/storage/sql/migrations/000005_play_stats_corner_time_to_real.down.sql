@@ -1,4 +1,7 @@
-CREATE TABLE IF NOT EXISTS play_stats_snapshots (
+-- Reverse: rebuild with INTEGER for corner_time / cornered_time.
+-- Decimal values will be truncated by SQLite's INTEGER affinity.
+
+CREATE TABLE play_stats_snapshots_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
   character TEXT NOT NULL,
@@ -58,6 +61,13 @@ CREATE TABLE IF NOT EXISTS play_stats_snapshots (
   practice_seconds INTEGER,
   extreme_seconds INTEGER
 );
+
+INSERT INTO play_stats_snapshots_new
+  SELECT * FROM play_stats_snapshots;
+
+DROP TABLE play_stats_snapshots;
+
+ALTER TABLE play_stats_snapshots_new RENAME TO play_stats_snapshots;
 
 CREATE INDEX IF NOT EXISTS idx_play_stats_user_char_at
   ON play_stats_snapshots(user_id, character, snapshot_at);
