@@ -367,8 +367,12 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 			slog.Warn("backfill: save text files failed", slog.Any("error", err))
 			// keep going; text-file failure isn't fatal
 		}
-		// per-match play stats snapshot — same SF6-only path
-		ch.playStatsSf6(ctx, session.UserId, match.ReplayID)
+		// Note: we intentionally do NOT call playStatsSf6 here. During backfill
+		// every imported match would attach an identical "current /play" snapshot
+		// (Capcom only returns current data, not historical), creating dozens of
+		// duplicate-value rows. The baseline snapshot already captured the state
+		// at tracking start; per-match snapshots only add information during live
+		// polling where the 100-match window actually shifts.
 		// notify the GUI in real time
 		ch.eventEmitter("match", match)
 		emitted = true
