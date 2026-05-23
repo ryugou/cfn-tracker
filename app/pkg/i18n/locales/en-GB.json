@@ -130,5 +130,7 @@
   "kpiThrowTech": "Throw tech",
   "kpiCornerTime": "Corner pressure (sec)",
   "kpiSaLv3": "SA Lv3 usage",
+  "statsNeedMorePoints": "At least 2 snapshots required to show a trend",
+  "tableLpDelta": "LP delta",
   "errGetPlayStats": "Failed to get play stats"
 }

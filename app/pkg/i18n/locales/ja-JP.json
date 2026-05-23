@@ -130,5 +130,7 @@
   "kpiThrowTech": "投げ抜け",
   "kpiCornerTime": "壁際追い詰め(秒)",
   "kpiSaLv3": "SA Lv3使用率",
+  "statsNeedMorePoints": "推移グラフには2件以上のスナップショットが必要です",
+  "tableLpDelta": "LP増減",
   "errGetPlayStats": "実績データを取得できませんでした"
 }

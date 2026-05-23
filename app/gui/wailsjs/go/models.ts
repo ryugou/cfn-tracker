@@ -171,6 +171,8 @@ export namespace model {
 	    kpiThrowTech: string;
 	    kpiCornerTime: string;
 	    kpiSaLv3: string;
+	    statsNeedMorePoints: string;
+	    tableLpDelta: string;
 	    errGetPlayStats: string;
 	}
 	export interface Match {

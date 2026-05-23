@@ -61,17 +61,17 @@ export function DetailTable({ userId, character }: Props) {
           <table className='w-full text-xs'>
             <thead className='text-white/60'>
               <tr>
-                <th className='p-1 text-left'>Date</th>
-                <th className='p-1 text-left'>Time</th>
-                <th className='p-1 text-left'>Char</th>
-                <th className='p-1 text-left'>Opp</th>
-                <th className='p-1 text-left'>W/L</th>
-                <th className='p-1 text-right'>LPΔ</th>
-                <th className='p-1 text-right'>DI</th>
-                <th className='p-1 text-right'>DI被</th>
-                <th className='p-1 text-right'>ジャパリ</th>
-                <th className='p-1 text-right'>投抜</th>
-                <th className='p-1 text-right'>壁秒</th>
+                <th className='p-1 text-left'>{t('date')}</th>
+                <th className='p-1 text-left'>{t('time')}</th>
+                <th className='p-1 text-left'>{t('character')}</th>
+                <th className='p-1 text-left'>{t('opponent')}</th>
+                <th className='p-1 text-left'>{t('result')}</th>
+                <th className='p-1 text-right'>{t('tableLpDelta')}</th>
+                <th className='p-1 text-right'>{t('kpiDriveImpact')}</th>
+                <th className='p-1 text-right'>{t('kpiReceivedDi')}</th>
+                <th className='p-1 text-right'>{t('kpiJustParry')}</th>
+                <th className='p-1 text-right'>{t('kpiThrowTech')}</th>
+                <th className='p-1 text-right'>{t('kpiCornerTime')}</th>
               </tr>
             </thead>
             <tbody>

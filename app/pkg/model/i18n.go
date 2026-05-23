@@ -132,5 +132,7 @@ type Localization struct {
 	KpiThrowTech             string `json:"kpiThrowTech"`
 	KpiCornerTime            string `json:"kpiCornerTime"`
 	KpiSaLv3                 string `json:"kpiSaLv3"`
+	StatsNeedMorePoints      string `json:"statsNeedMorePoints"`
+	TableLpDelta             string `json:"tableLpDelta"`
 	ErrGetPlayStats          string `json:"errGetPlayStats"`
 }

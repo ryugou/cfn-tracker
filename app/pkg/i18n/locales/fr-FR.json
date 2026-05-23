@@ -130,5 +130,7 @@
   "kpiThrowTech": "Casser une projection",
   "kpiCornerTime": "Pression au mur (s)",
   "kpiSaLv3": "Usage SA Lv3",
+  "statsNeedMorePoints": "Au moins 2 instantanés requis pour afficher une tendance",
+  "tableLpDelta": "LP gagné/perdu",
   "errGetPlayStats": "Impossible de récupérer les statistiques"
 }

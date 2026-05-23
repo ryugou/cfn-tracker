@@ -1,7 +1,9 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 import { model } from '@model'
+import type { LocalizationKey } from '@/main/i18n'
 
 type Props = {
   history: model.PlayStatsSnapshot[]
@@ -9,30 +11,32 @@ type Props = {
 
 const series: Array<{
   key: keyof model.PlayStatsSnapshot
-  label: string
+  labelKey: LocalizationKey
   color: string
 }> = [
-  { key: 'driveImpact', label: 'DI 命中', color: '#34d399' },
-  { key: 'receivedDriveImpact', label: 'DI 被弾', color: '#f87171' },
-  { key: 'justParry', label: 'ジャパリ', color: '#a78bfa' },
-  { key: 'throwTech', label: '投げ抜け', color: '#fbbf24' },
-  { key: 'cornerTime', label: '壁際秒', color: '#60a5fa' },
-  { key: 'gaugeRateSALv3', label: 'SA Lv3 %', color: '#fb923c' }
+  { key: 'driveImpact', labelKey: 'kpiDriveImpact', color: '#34d399' },
+  { key: 'receivedDriveImpact', labelKey: 'kpiReceivedDi', color: '#f87171' },
+  { key: 'justParry', labelKey: 'kpiJustParry', color: '#a78bfa' },
+  { key: 'throwTech', labelKey: 'kpiThrowTech', color: '#fbbf24' },
+  { key: 'cornerTime', labelKey: 'kpiCornerTime', color: '#60a5fa' },
+  { key: 'gaugeRateSALv3', labelKey: 'kpiSaLv3', color: '#fb923c' }
 ]
 
 export function TrendChart({ history }: Props) {
-  const data = history.map(s => ({
-    snapshotAt: s.snapshotAt,
-    ...Object.fromEntries(series.map(sr => [sr.key, s[sr.key] as number]))
-  }))
+  const { t } = useTranslation()
 
   if (history.length < 2) {
     return (
       <div className='flex h-64 items-center justify-center text-white/40'>
-        — 2 points required for a trend —
+        — {t('statsNeedMorePoints')} —
       </div>
     )
   }
+
+  const data = history.map(s => ({
+    snapshotAt: s.snapshotAt,
+    ...Object.fromEntries(series.map(sr => [sr.key, s[sr.key] as number]))
+  }))
 
   return (
     <div className='mb-6 h-64 w-full'>
@@ -50,7 +54,7 @@ export function TrendChart({ history }: Props) {
               key={s.key}
               type='monotone'
               dataKey={s.key}
-              name={s.label}
+              name={t(s.labelKey)}
               stroke={s.color}
               dot={false}
             />
