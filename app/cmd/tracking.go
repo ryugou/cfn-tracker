@@ -332,22 +332,7 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 	for i := range imported {
 		match := imported[i]
 		prev := getPreviousMatchForCharacterInSession(session, match.Character)
-		if match.Victory {
-			match.Wins = prev.Wins + 1
-			match.WinStreak = prev.WinStreak + 1
-		} else {
-			match.Losses = prev.Losses + 1
-			match.WinStreak = 0
-		}
-		total := match.Wins + match.Losses
-		if total > 0 {
-			match.WinRate = int((float64(match.Wins) / float64(total)) * 100)
-		}
-		// LP/MR gain: relative to the prior match for same character, or 0 if first
-		if prev.ReplayID != "" {
-			match.LPGain = prev.LPGain + (match.LP - prev.LP)
-			match.MRGain = prev.MRGain + (match.MR - prev.MR)
-		}
+		match = ApplyRunningCounters(match, prev)
 
 		// Persist the match before mutating any in-memory or downstream state
 		// so memory, DB, and UI never diverge. Inspect SaveMatchIfNew because
@@ -397,6 +382,45 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 		emitted = true
 	}
 	return emitted
+}
+
+// ApplyRunningCounters fills in Wins/Losses/WinStreak/WinRate/LPGain/MRGain
+// on match by carrying forward prev's counters and incrementing based on
+// match.Victory. Pure function — no DB or state side-effects.
+//
+// Example progression illustrating the carry-forward requirement:
+//
+//	win  -> wins=1, losses=0, streak=1
+//	lose -> wins=1, losses=1, streak=0  (wins MUST carry forward, not reset)
+//	lose -> wins=1, losses=2, streak=0
+//	win  -> wins=2, losses=2, streak=1  (losses MUST carry forward, not reset)
+//
+// Earlier the backfill loop set only the incremented side, leaving the
+// other counter at the Match zero value and silently resetting the
+// running total every alternate result. Mirror the live SF6Tracker.Poll
+// pattern: copy both prev counters first, then increment only the
+// relevant one.
+func ApplyRunningCounters(match, prev model.Match) model.Match {
+	match.Wins = prev.Wins
+	match.Losses = prev.Losses
+	match.WinStreak = prev.WinStreak
+	if match.Victory {
+		match.Wins++
+		match.WinStreak++
+	} else {
+		match.Losses++
+		match.WinStreak = 0
+	}
+	total := match.Wins + match.Losses
+	if total > 0 {
+		match.WinRate = int((float64(match.Wins) / float64(total)) * 100)
+	}
+	// LP/MR gain: relative to the prior match for same character, or 0 if first
+	if prev.ReplayID != "" {
+		match.LPGain = prev.LPGain + (match.LP - prev.LP)
+		match.MRGain = prev.MRGain + (match.MR - prev.MR)
+	}
+	return match
 }
 
 // getPreviousMatchForCharacterInSession finds the most-recent saved match in
