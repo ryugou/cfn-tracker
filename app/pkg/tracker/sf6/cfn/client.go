@@ -17,6 +17,7 @@ import (
 
 type CFNClient interface {
 	GetBattleLog(ctx context.Context, cfn string) (*BattleLog, error)
+	GetBattleLogPage(ctx context.Context, cfn string, page int) (*BattleLog, error)
 	GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, error)
 	Authenticate(ctx context.Context, email string, password string, statChan chan tracker.AuthStatus)
 }
@@ -31,17 +32,19 @@ func NewClient(browser *browser.Browser) *Client {
 	return &Client{browser}
 }
 
-func (c *Client) GetBattleLog(ctx context.Context, cfn string) (*BattleLog, error) {
-	page := c.browser.Page.Context(ctx)
-	err := page.Navigate(fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/battlelog/rank", cfn))
-	if err != nil {
+func (c *Client) GetBattleLogPage(ctx context.Context, cfn string, page int) (*BattleLog, error) {
+	url := fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/battlelog/rank", cfn)
+	if page > 1 {
+		url = fmt.Sprintf("%s?page=%d", url, page)
+	}
+	p := c.browser.Page.Context(ctx)
+	if err := p.Navigate(url); err != nil {
 		return nil, fmt.Errorf("navigate to cfn: %w", err)
 	}
-	err = page.WaitLoad()
-	if err != nil {
+	if err := p.WaitLoad(); err != nil {
 		return nil, fmt.Errorf("wait for cfn to load: %w", err)
 	}
-	nextData, err := page.Element("#__NEXT_DATA__")
+	nextData, err := p.Element("#__NEXT_DATA__")
 	if err != nil {
 		return nil, fmt.Errorf("get next_data element: %w", err)
 	}
@@ -49,18 +52,19 @@ func (c *Client) GetBattleLog(ctx context.Context, cfn string) (*BattleLog, erro
 	if err != nil {
 		return nil, fmt.Errorf("get next_data json: %w", err)
 	}
-
 	var profilePage ProfilePage
-	err = json.Unmarshal([]byte(body), &profilePage)
-	if err != nil {
+	if err := json.Unmarshal([]byte(body), &profilePage); err != nil {
 		return nil, fmt.Errorf("unmarshal battle log: %w", err)
 	}
-
 	bl := &profilePage.Props.PageProps
 	if bl.Common.StatusCode != 200 {
 		return nil, fmt.Errorf("fetch battle log, received status code %v", bl.Common.StatusCode)
 	}
 	return bl, nil
+}
+
+func (c *Client) GetBattleLog(ctx context.Context, cfn string) (*BattleLog, error) {
+	return c.GetBattleLogPage(ctx, cfn, 1)
 }
 
 func (c *Client) GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, error) {

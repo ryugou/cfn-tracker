@@ -3,6 +3,7 @@ package sf6
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
@@ -140,6 +141,101 @@ func getLeagueFromLP(lp int) string {
 
 func (t *SF6Tracker) Authenticate(ctx context.Context, email string, password string, statChan chan tracker.AuthStatus) {
 	t.cfnClient.Authenticate(ctx, email, password, statChan)
+}
+
+// BackfillMatches scans /battlelog/rank pagination starting at page 1, returning
+// matches not already in knownReplayIds. Stops as soon as a page yields zero
+// new replays. Returns matches in chronological (oldest → newest) order so the
+// caller can apply running win/loss/streak counters in sequence.
+//
+// session.UserId and session.UserName are used to populate Match fields.
+// LP / MR / character on each Match come from the replay snapshot itself, not
+// the current battle banner — so a backfilled match reflects the in-game state
+// at that time.
+func (t *SF6Tracker) BackfillMatches(
+	ctx context.Context,
+	session *model.Session,
+	knownReplayIds map[string]bool,
+) ([]model.Match, error) {
+	const maxPages = 20 // safety cap; ~200 replays per cap
+
+	collected := make([]model.Match, 0, 32)
+	for page := 1; page <= maxPages; page++ {
+		bl, err := t.cfnClient.GetBattleLogPage(ctx, session.UserId, page)
+		if err != nil {
+			return nil, fmt.Errorf("fetch page %d: %w", page, err)
+		}
+		if bl == nil || len(bl.ReplayList) == 0 {
+			break
+		}
+		newOnThisPage := 0
+		for _, r := range bl.ReplayList {
+			if knownReplayIds[r.ReplayID] {
+				continue
+			}
+			m := replayToMatch(bl, r, session)
+			collected = append(collected, m)
+			newOnThisPage++
+		}
+		if newOnThisPage == 0 {
+			// caught up — every replay on this page already in DB
+			break
+		}
+		if bl.TotalPage > 0 && page >= bl.TotalPage {
+			break
+		}
+		// Surface silent truncation when Capcom reports more pages than our safety cap.
+		if page == maxPages && bl.TotalPage > maxPages {
+			slog.Warn(
+				"backfill: hit page cap before exhausting capcom pagination",
+				slog.Int("max_pages", maxPages),
+				slog.Int("total_pages", bl.TotalPage),
+			)
+		}
+	}
+
+	// Reverse: collected is newest-first per Capcom; backfill needs oldest-first
+	// so downstream win/loss/streak accumulation matches real play order.
+	for i, j := 0, len(collected)-1; i < j; i, j = i+1, j-1 {
+		collected[i], collected[j] = collected[j], collected[i]
+	}
+	return collected, nil
+}
+
+// replayToMatch builds a Match from a single Replay without running counters.
+// The TrackingHandler accumulates wins/losses/streak/LPGain/MRGain in the order
+// matches are returned by BackfillMatches.
+func replayToMatch(bl *cfn.BattleLog, r cfn.Replay, session *model.Session) model.Match {
+	// Determine which side is the tracked user. The user's CFN ID is bl.GetCFN().
+	userCfn := bl.GetCFN()
+	var me, opp cfn.PlayerInfo
+	if r.Player1Info.Player.FighterID == userCfn {
+		me = r.Player1Info
+		opp = r.Player2Info
+	} else {
+		me = r.Player2Info
+		opp = r.Player1Info
+	}
+	victory := !isVictory(opp.RoundResults)
+
+	battleAt := time.Unix(r.UploadedAt, 0)
+	return model.Match{
+		UserId:            session.UserId,
+		UserName:          session.UserName,
+		SessionId:         session.Id,
+		ReplayID:          r.ReplayID,
+		Character:         me.CharacterName,
+		LP:                me.LeaguePoint,
+		MR:                me.MasterRating,
+		Opponent:          opp.Player.FighterID,
+		OpponentCharacter: opp.CharacterName,
+		OpponentLP:        opp.LeaguePoint,
+		OpponentLeague:    getLeagueFromLP(opp.LeaguePoint),
+		OpponentMR:        opp.MasterRating,
+		Victory:           victory,
+		Date:              battleAt.Format("2006-01-02"),
+		Time:              battleAt.Format("15:04"),
+	}
 }
 
 // PlayStatsResult bundles the parsed /play data for storage. Character is

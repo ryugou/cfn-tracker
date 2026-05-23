@@ -201,6 +201,78 @@ func TestGetPlayStatsCharacters(t *testing.T) {
 	}
 }
 
+func TestSaveMatchIfNewReportsPrimaryKeyCollision(t *testing.T) {
+	ctx := context.Background()
+
+	if err := store.SaveUser(ctx, model.User{Code: "collide-u", DisplayName: "bf"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "collide-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	base := model.Match{
+		UserId: "collide-u", UserName: "bf", SessionId: sesh.Id,
+		Character: "JP", Date: "2026-05-23", Time: "10:00",
+	}
+
+	first := base
+	first.ReplayID = "collide-first"
+	inserted, err := store.SaveMatchIfNew(ctx, first)
+	if err != nil {
+		t.Fatalf("SaveMatchIfNew first: %v", err)
+	}
+	if !inserted {
+		t.Fatalf("first insert should report inserted=true")
+	}
+
+	dup := base
+	dup.ReplayID = "collide-second"
+	inserted, err = store.SaveMatchIfNew(ctx, dup)
+	if err != nil {
+		t.Fatalf("SaveMatchIfNew dup: %v", err)
+	}
+	if inserted {
+		t.Errorf("PK collision should report inserted=false, replay_id=%q", dup.ReplayID)
+	}
+}
+
+func TestGetMatchReplayIDsForUser(t *testing.T) {
+	ctx := context.Background()
+
+	if err := store.SaveUser(ctx, model.User{Code: "backfill-u", DisplayName: "bf"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "backfill-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	for _, rid := range []string{"r1", "r2", "r3"} {
+		err := store.SaveMatch(ctx, model.Match{
+			UserId: "backfill-u", UserName: "bf", SessionId: sesh.Id,
+			ReplayID: rid, Character: "JP",
+			Date: "2026-05-23", Time: "10:0" + rid[1:],
+		})
+		if err != nil {
+			t.Fatalf("SaveMatch(%s): %v", rid, err)
+		}
+	}
+
+	got, err := store.GetMatchReplayIDsForUser(ctx, "backfill-u")
+	if err != nil {
+		t.Fatalf("GetMatchReplayIDsForUser: %v", err)
+	}
+	for _, want := range []string{"r1", "r2", "r3"} {
+		if !got[want] {
+			t.Errorf("missing replay id %q in result %v", want, got)
+		}
+	}
+	if got["r4"] {
+		t.Errorf("unexpected r4 in result")
+	}
+}
+
 func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
 	ctx := context.Background()
 

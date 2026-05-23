@@ -134,6 +134,8 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 		}
 	}
 
+	backfilled := ch.backfillSf6(ctx, session)
+
 	ch.eventEmitter("match", model.Match{
 		UserName:  session.UserName,
 		LP:        session.LP,
@@ -166,7 +168,10 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 		}
 	}
 
-	if len(session.Matches) > 0 {
+	// Re-emit the latest known match so the UI repaints session state. Skip when
+	// backfill just emitted matches: session.Matches[0] is the same match that
+	// was already pushed to the GUI via the backfill loop.
+	if !backfilled && len(session.Matches) > 0 {
 		match := *session.Matches[0]
 		ch.eventEmitter("match", match)
 		for _, mc := range ch.matchChans {
@@ -274,6 +279,113 @@ func (ch *TrackingHandler) ForcePoll() {
 	if ch.forcePollChan != nil {
 		ch.forcePollChan <- struct{}{}
 	}
+}
+
+// backfillSf6 imports past ranked matches from Capcom that aren't already in
+// our matches table, in chronological order. Best-effort: warns and continues
+// on any failure to keep the rest of tracking unaffected. Returns true when at
+// least one match was emitted so the caller can skip a redundant latest-match
+// re-emit.
+func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Session) bool {
+	sf6Tracker, ok := ch.gameTracker.(*sf6.SF6Tracker)
+	if !ok {
+		return false
+	}
+	known, err := ch.sqlDb.GetMatchReplayIDsForUser(ctx, session.UserId)
+	if err != nil {
+		slog.Warn("backfill: known replays lookup failed", slog.Any("error", err))
+		return false
+	}
+	imported, err := sf6Tracker.BackfillMatches(ctx, session, known)
+	if err != nil {
+		slog.Warn("backfill: fetch failed", slog.Any("error", err))
+		return false
+	}
+	if len(imported) == 0 {
+		return false
+	}
+	slog.Info("backfill: importing past matches", slog.Int("count", len(imported)))
+	emitted := false
+
+	// Walk chronologically (oldest → newest); piggyback on the same fan-out logic
+	// the live loop uses so wins/losses/streak are computed per character and the
+	// UI gets a match event for each.
+	for i := range imported {
+		match := imported[i]
+		prev := getPreviousMatchForCharacterInSession(session, match.Character)
+		if match.Victory {
+			match.Wins = prev.Wins + 1
+			match.WinStreak = prev.WinStreak + 1
+		} else {
+			match.Losses = prev.Losses + 1
+			match.WinStreak = 0
+		}
+		total := match.Wins + match.Losses
+		if total > 0 {
+			match.WinRate = int((float64(match.Wins) / float64(total)) * 100)
+		}
+		// LP/MR gain: relative to the prior match for same character, or 0 if first
+		if prev.ReplayID != "" {
+			match.LPGain = prev.LPGain + (match.LP - prev.LP)
+			match.MRGain = prev.MRGain + (match.MR - prev.MR)
+		}
+
+		// Persist the match before mutating any in-memory or downstream state
+		// so memory, DB, and UI never diverge. Inspect SaveMatchIfNew because
+		// the matches PK is (session_id, date, time) and our timestamps round to
+		// HH:MM — two replays in the same minute within one session would be
+		// silently ignored by INSERT OR IGNORE, leaving the in-memory session
+		// ahead of the DB.
+		inserted, err := ch.sqlDb.SaveMatchIfNew(ctx, match)
+		if err != nil {
+			slog.Warn("backfill: save match failed", slog.Any("error", err))
+			break
+		}
+		if !inserted {
+			slog.Warn(
+				"backfill: skipping match — primary key collision (session_id, date, time)",
+				slog.String("replay_id", match.ReplayID),
+				slog.String("date", match.Date),
+				slog.String("time", match.Time),
+			)
+			continue
+		}
+		// Try to persist the session next. If this fails, the match row is in
+		// the DB but the session aggregate is stale — preserve the DB ordering
+		// by mutating the in-memory session only after UpdateSession succeeds.
+		nextSession := *session
+		nextSession.LP = match.LP
+		nextSession.MR = match.MR
+		nextSession.Matches = append([]*model.Match{&match}, session.Matches...)
+		if err := ch.sqlDb.UpdateSession(ctx, &nextSession); err != nil {
+			slog.Warn("backfill: update session failed", slog.Any("error", err))
+			break
+		}
+		*session = nextSession
+
+		if err := ch.txtDb.SaveMatch(match); err != nil {
+			slog.Warn("backfill: save text files failed", slog.Any("error", err))
+			// keep going; text-file failure isn't fatal
+		}
+		// per-match play stats snapshot — same SF6-only path
+		ch.playStatsSf6(ctx, session.UserId, match.ReplayID)
+		// notify the GUI in real time
+		ch.eventEmitter("match", match)
+		emitted = true
+	}
+	return emitted
+}
+
+// getPreviousMatchForCharacterInSession finds the most-recent saved match in
+// the running session for the given character. Returns zero-value Match if
+// none exists yet.
+func getPreviousMatchForCharacterInSession(session *model.Session, character string) model.Match {
+	for _, m := range session.Matches {
+		if m != nil && m.Character == character {
+			return *m
+		}
+	}
+	return model.Match{}
 }
 
 // playStatsSf6 captures a /play snapshot and saves it to SQLite. Returns

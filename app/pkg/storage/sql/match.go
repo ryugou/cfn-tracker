@@ -16,6 +16,24 @@ type MatchStorage interface {
 }
 
 func (s *Storage) SaveMatch(ctx context.Context, match model.Match) error {
+	_, err := s.saveMatch(ctx, match)
+	return err
+}
+
+// SaveMatchIfNew inserts the match and reports whether a new row was actually
+// created. Returns false when the underlying INSERT OR IGNORE collides on the
+// (session_id, date, time) primary key — important for the backfill path which
+// otherwise would treat an ignored insert as a successful save and leave
+// in-memory state ahead of the DB.
+func (s *Storage) SaveMatchIfNew(ctx context.Context, match model.Match) (bool, error) {
+	rows, err := s.saveMatch(ctx, match)
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
+}
+
+func (s *Storage) saveMatch(ctx context.Context, match model.Match) (int64, error) {
 	query := `
 		INSERT OR IGNORE INTO matches (
 			user_id,
@@ -64,12 +82,38 @@ func (s *Storage) SaveMatch(ctx context.Context, match model.Match) error {
 			:replay_id
 		)
 	`
-	_, err := s.db.NamedExecContext(ctx, query, match)
+	res, err := s.db.NamedExecContext(ctx, query, match)
 	if err != nil {
-		return fmt.Errorf("create match: %w", err)
+		return 0, fmt.Errorf("create match: %w", err)
 	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
+	return rows, nil
+}
 
-	return nil
+func (s *Storage) GetMatchReplayIDsForUser(ctx context.Context, userId string) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT replay_id FROM matches
+		WHERE user_id = ? AND replay_id != ''
+	`, userId)
+	if err != nil {
+		return nil, fmt.Errorf("query existing replay ids: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]bool, 64)
+	for rows.Next() {
+		var rid string
+		if err := rows.Scan(&rid); err != nil {
+			return nil, fmt.Errorf("scan replay id: %w", err)
+		}
+		out[rid] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate replay ids: %w", err)
+	}
+	return out, nil
 }
 
 func (s *Storage) GetMatches(ctx context.Context, sessionId uint16, userId string, limit uint8, offset uint16) ([]*model.Match, error) {
