@@ -181,6 +181,25 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 		}
 	}
 
+	// If this is a brand-new session AND backfill imported nothing
+	// (because everything was already saved in a previous session),
+	// re-emit the user's most recent match so the tracking-page summary
+	// reflects historical wins/losses/streak/LP instead of all zeros.
+	if len(session.Matches) == 0 {
+		if last, err := ch.sqlDb.GetLatestMatchForUser(ctx, user.Code); err != nil {
+			slog.Warn("fetch latest historical match failed", slog.Any("error", err))
+		} else if last != nil {
+			session.LP = last.LP
+			session.MR = last.MR
+			ch.eventEmitter("match", *last)
+			for _, mc := range ch.matchChans {
+				if mc != nil {
+					mc <- *last
+				}
+			}
+		}
+	}
+
 	go func() {
 		slog.Debug("polling")
 		match, err := ch.gameTracker.Poll(ctx, session)

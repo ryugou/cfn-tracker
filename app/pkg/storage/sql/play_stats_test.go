@@ -273,6 +273,59 @@ func TestGetMatchReplayIDsForUser(t *testing.T) {
 	}
 }
 
+func TestGetLatestMatchForUser(t *testing.T) {
+	ctx := context.Background()
+
+	if err := store.SaveUser(ctx, model.User{Code: "latest-u", DisplayName: "lu"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "latest-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	older := model.Match{
+		UserId: "latest-u", UserName: "lu", SessionId: sesh.Id,
+		ReplayID: "old-r", Character: "JP",
+		Date: "2026-05-20", Time: "10:00",
+		Wins: 5, Losses: 2,
+	}
+	newer := model.Match{
+		UserId: "latest-u", UserName: "lu", SessionId: sesh.Id,
+		ReplayID: "new-r", Character: "JP",
+		Date: "2026-05-23", Time: "14:30",
+		Wins: 6, Losses: 2,
+	}
+	if err := store.SaveMatch(ctx, older); err != nil {
+		t.Fatalf("SaveMatch older: %v", err)
+	}
+	if err := store.SaveMatch(ctx, newer); err != nil {
+		t.Fatalf("SaveMatch newer: %v", err)
+	}
+
+	got, err := store.GetLatestMatchForUser(ctx, "latest-u")
+	if err != nil {
+		t.Fatalf("GetLatestMatchForUser: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected a match, got nil")
+	}
+	if got.ReplayID != "new-r" {
+		t.Errorf("ReplayID = %q, want new-r", got.ReplayID)
+	}
+	if got.Wins != 6 {
+		t.Errorf("Wins = %d, want 6", got.Wins)
+	}
+
+	none, err := store.GetLatestMatchForUser(ctx, "no-such-user")
+	if err != nil {
+		t.Fatalf("GetLatestMatchForUser(no user): %v", err)
+	}
+	if none != nil {
+		t.Errorf("expected nil for unknown user, got %+v", none)
+	}
+}
+
 func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
 	ctx := context.Background()
 

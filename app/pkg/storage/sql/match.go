@@ -93,6 +93,27 @@ func (s *Storage) saveMatch(ctx context.Context, match model.Match) (int64, erro
 	return rows, nil
 }
 
+// GetLatestMatchForUser returns the most recent match across all sessions for
+// the user, or nil if none exists. Useful for restoring the tracking-page
+// summary (wins/losses/streak/LP) when a brand-new session starts but the
+// user already has historical matches.
+func (s *Storage) GetLatestMatchForUser(ctx context.Context, userId string) (*model.Match, error) {
+	query := `
+		SELECT * FROM matches
+		WHERE user_id = ?
+		ORDER BY date DESC, time DESC
+		LIMIT 1
+	`
+	var matches []*model.Match
+	if err := s.db.SelectContext(ctx, &matches, query, userId); err != nil {
+		return nil, fmt.Errorf("select latest match: %w", err)
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	return matches[0], nil
+}
+
 func (s *Storage) GetMatchReplayIDsForUser(ctx context.Context, userId string) (map[string]bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT replay_id FROM matches
