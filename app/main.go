@@ -250,7 +250,7 @@ func main() {
 			}
 
 			trackingHandler.SetEventEmitter(func(eventName string, optionalData ...interface{}) {
-				slog.Info("[FE]", slog.String("event", eventName), slog.Any("data", optionalData))
+				slog.Debug("[FE]", slog.String("event", eventName), slog.Any("data", optionalData))
 				runtime.EventsEmit(ctx, eventName, optionalData...)
 			})
 		},

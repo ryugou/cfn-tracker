@@ -170,5 +170,5 @@ func (c *Client) Authenticate(ctx context.Context, email string, password string
 	page.MustWaitLoad().MustWaitRequestIdle()
 
 	statChan <- *status.WithProgress(100)
-	slog.Info("passed cfn auth")
+	slog.Debug("passed cfn auth")
 }

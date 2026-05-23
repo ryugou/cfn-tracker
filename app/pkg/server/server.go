@@ -34,7 +34,7 @@ func NewBrowserSourceServer(matchChan chan model.Match) *BrowserSourceServer {
 func (b *BrowserSourceServer) Start(ctx context.Context, cfg *config.BuildConfig) {
 	go func() {
 		for match := range b.matchChan {
-			slog.Info("browser source: match received", slog.Any("replay_id", match.ReplayID))
+			slog.Debug("browser source: match received", slog.Any("replay_id", match.ReplayID))
 			matchJson, err := json.Marshal(match)
 			if err != nil {
 				slog.Error("browser source: marshal match data", slog.Any("error", err))
