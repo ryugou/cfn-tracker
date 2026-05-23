@@ -120,6 +120,7 @@ type Localization struct {
 	StatsPeriod30Days        string `json:"statsPeriod30Days"`
 	StatsPeriodAllTime       string `json:"statsPeriodAllTime"`
 	StatsCharacter           string `json:"statsCharacter"`
+	StatsAllCharacters       string `json:"statsAllCharacters"`
 	StatsUser                string `json:"statsUser"`
 	StatsPreviousDelta       string `json:"statsPreviousDelta"`
 	StatsTooltip             string `json:"statsTooltip"`

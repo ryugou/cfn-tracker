@@ -181,8 +181,13 @@ func (ch *CommandHandler) GetPlayStatsHistory(
 	return rows, nil
 }
 
+// GetPlayStatsCharacters returns the characters the user has played in
+// tracked matches. Despite the legacy name (kept to preserve the Wails
+// binding), this is sourced from matches.character — snapshots store only
+// the user's favorite at capture time and are user-wide, so the snapshot
+// table is not a meaningful source for per-character filtering.
 func (ch *CommandHandler) GetPlayStatsCharacters(userId string) ([]string, error) {
-	chars, err := ch.sqlDb.GetPlayStatsCharacters(context.Background(), userId)
+	chars, err := ch.sqlDb.GetMatchCharactersForUser(context.Background(), userId)
 	if err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
 	}

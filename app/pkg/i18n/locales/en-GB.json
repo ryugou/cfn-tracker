@@ -118,6 +118,7 @@
   "statsPeriod30Days": "Last 30 days",
   "statsPeriodAllTime": "All time",
   "statsCharacter": "Character",
+  "statsAllCharacters": "All characters",
   "statsUser": "User",
   "statsPreviousDelta": "vs. previous",
   "statsTooltip": "Delta from previous 100-match average snapshot",

@@ -118,6 +118,7 @@
   "statsPeriod30Days": "直近30日",
   "statsPeriodAllTime": "全期間",
   "statsCharacter": "キャラクター",
+  "statsAllCharacters": "全キャラ",
   "statsUser": "ユーザー",
   "statsPreviousDelta": "前回比",
   "statsTooltip": "100戦平均の前回スナップショットからの差分",

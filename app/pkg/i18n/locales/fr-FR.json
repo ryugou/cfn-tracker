@@ -118,6 +118,7 @@
   "statsPeriod30Days": "30 derniers jours",
   "statsPeriodAllTime": "Tout l'historique",
   "statsCharacter": "Personnage",
+  "statsAllCharacters": "Tous les personnages",
   "statsUser": "Utilisateur",
   "statsPreviousDelta": "vs précédent",
   "statsTooltip": "Différence par rapport au précédent instantané (moyenne sur 100 matchs)",

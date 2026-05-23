@@ -64,13 +64,20 @@ func (s *Storage) SavePlayStats(ctx context.Context, snap model.PlayStatsSnapsho
 	return nil
 }
 
+// GetPlayStatsHistory returns user-wide play-stats snapshots. The Capcom
+// /play battle_stats payload is a user-level aggregate (not per-character),
+// so the `character` argument is accepted for backwards compatibility only
+// and is ignored — filtering by it would silently drop snapshots whose
+// stored character tag (the user's favorite at capture time) differs from
+// the caller-supplied value. Per-character views must be derived at a
+// higher layer by attributing snapshot deltas to each match's character.
 func (s *Storage) GetPlayStatsHistory(
 	ctx context.Context,
-	userId, character, from, to string,
+	userId, _ /* character (ignored) */, from, to string,
 	limit uint16,
 ) ([]*model.PlayStatsSnapshot, error) {
-	wheres := []string{"user_id = ?", "character = ?"}
-	args := []interface{}{userId, character}
+	wheres := []string{"user_id = ?"}
+	args := []interface{}{userId}
 	if from != "" {
 		wheres = append(wheres, "DATE(snapshot_at) >= ?")
 		args = append(args, from)
@@ -96,32 +103,6 @@ func (s *Storage) GetPlayStatsHistory(
 	return rows, nil
 }
 
-func (s *Storage) GetPlayStatsCharacters(ctx context.Context, userId string) ([]string, error) {
-	query := `
-		SELECT DISTINCT character
-		FROM play_stats_snapshots
-		WHERE user_id = ?
-		ORDER BY character ASC
-	`
-	rows, err := s.db.QueryContext(ctx, query, userId)
-	if err != nil {
-		return nil, fmt.Errorf("execute distinct characters query: %w", err)
-	}
-	defer rows.Close()
-	characters := make([]string, 0, 4)
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			return nil, fmt.Errorf("scan character row: %w", err)
-		}
-		characters = append(characters, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate character rows: %w", err)
-	}
-	return characters, nil
-}
-
 func (s *Storage) GetMatchesWithPlayStats(
 	ctx context.Context,
 	userId, character string,
@@ -136,14 +117,23 @@ func (s *Storage) GetMatchesWithPlayStats(
 	if limit != 0 || offset != 0 {
 		pagination = fmt.Sprintf("LIMIT %d OFFSET %d", limit, offset)
 	}
+	// Empty character = "all characters" (per-character views are now derived
+	// from snapshot deltas; the selector may target every match the user has
+	// played). Non-empty character keeps the per-character pagination scope.
+	whereParts := []string{"user_id = ?"}
+	args := []interface{}{userId}
+	if character != "" {
+		whereParts = append(whereParts, "character = ?")
+		args = append(args, character)
+	}
 	query := fmt.Sprintf(`
 		SELECT * FROM matches
-		WHERE user_id = ? AND character = ?
+		WHERE %s
 		ORDER BY date DESC, time DESC
 		%s
-	`, pagination)
+	`, strings.Join(whereParts, " AND "), pagination)
 	var matches []*model.Match
-	if err := s.db.SelectContext(ctx, &matches, query, userId, character); err != nil {
+	if err := s.db.SelectContext(ctx, &matches, query, args...); err != nil {
 		return nil, fmt.Errorf("get matches for stats join: %w", err)
 	}
 	if len(matches) == 0 {
@@ -158,10 +148,15 @@ func (s *Storage) GetMatchesWithPlayStats(
 	}
 	statsByReplay := map[string]*model.PlayStatsSnapshot{}
 	if len(replayIds) > 0 {
+		// Snapshots are user-wide (one per match_replay_id regardless of
+		// favorite-character tag), so we look them up by (user_id,
+		// match_replay_id) only — joining on character would drop
+		// snapshots whose stored character tag doesn't match the match's
+		// character (e.g. when the user's favorite changed mid-session).
 		q, args, err := sqlx.In(`
 			SELECT * FROM play_stats_snapshots
-			WHERE user_id = ? AND character = ? AND match_replay_id IN (?)
-		`, userId, character, replayIds)
+			WHERE user_id = ? AND match_replay_id IN (?)
+		`, userId, replayIds)
 		if err != nil {
 			return nil, fmt.Errorf("prepare stats lookup: %w", err)
 		}

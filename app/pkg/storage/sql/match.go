@@ -114,6 +114,36 @@ func (s *Storage) GetLatestMatchForUser(ctx context.Context, userId string) (*mo
 	return matches[0], nil
 }
 
+// GetMatchCharactersForUser returns the distinct characters the user has
+// actually played in tracked matches, sorted alphabetically. This is the
+// correct source for a per-character UI selector — DISTINCT against
+// play_stats_snapshots.character would only reflect the user's favorite
+// at each snapshot, which is not what the user wants to filter by.
+func (s *Storage) GetMatchCharactersForUser(ctx context.Context, userId string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT character
+		FROM matches
+		WHERE user_id = ? AND character != ''
+		ORDER BY character ASC
+	`, userId)
+	if err != nil {
+		return nil, fmt.Errorf("query match characters: %w", err)
+	}
+	defer rows.Close()
+	out := make([]string, 0, 4)
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, fmt.Errorf("scan match character: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate match characters: %w", err)
+	}
+	return out, nil
+}
+
 func (s *Storage) GetMatchReplayIDsForUser(ctx context.Context, userId string) (map[string]bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT replay_id FROM matches

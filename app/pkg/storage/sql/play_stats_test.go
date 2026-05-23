@@ -134,16 +134,26 @@ func TestSaveBaselineSnapshot(t *testing.T) {
 func TestGetPlayStatsHistoryFiltersAndLimit(t *testing.T) {
 	ctx := context.Background()
 
-	// Three snapshots for the same user/character — we only need the count
-	// to exceed our LIMIT; date filters use the inserted DEFAULT.
-	for i := 0; i < 3; i++ {
-		if err := store.SavePlayStats(ctx, sampleSnapshot("user-filter", "JP", "")); err != nil {
+	// Mix character tags on the saved snapshots — GetPlayStatsHistory must
+	// ignore the `character` argument and treat snapshots as user-wide.
+	for _, char := range []string{"JP", "Ken", "JP"} {
+		if err := store.SavePlayStats(ctx, sampleSnapshot("user-filter", char, "")); err != nil {
 			t.Fatalf("SavePlayStats: %v", err)
 		}
 	}
 
+	// 0) character argument is ignored: passing a value that no snapshot
+	//    was saved with must still return all of the user's snapshots.
+	all, err := store.GetPlayStatsHistory(ctx, "user-filter", "Ryu", "", "", 0)
+	if err != nil {
+		t.Fatalf("GetPlayStatsHistory(character ignored): %v", err)
+	}
+	if len(all) != 3 {
+		t.Errorf("character-ignored rows = %d, want 3", len(all))
+	}
+
 	// 1) limit > 0 caps the result set
-	limited, err := store.GetPlayStatsHistory(ctx, "user-filter", "JP", "", "", 2)
+	limited, err := store.GetPlayStatsHistory(ctx, "user-filter", "", "", "", 2)
 	if err != nil {
 		t.Fatalf("GetPlayStatsHistory(limit=2): %v", err)
 	}
@@ -152,7 +162,7 @@ func TestGetPlayStatsHistoryFiltersAndLimit(t *testing.T) {
 	}
 
 	// 2) "from" in the future excludes everything
-	none, err := store.GetPlayStatsHistory(ctx, "user-filter", "JP", "2099-01-01", "", 0)
+	none, err := store.GetPlayStatsHistory(ctx, "user-filter", "", "2099-01-01", "", 0)
 	if err != nil {
 		t.Fatalf("GetPlayStatsHistory(from=future): %v", err)
 	}
@@ -161,7 +171,7 @@ func TestGetPlayStatsHistoryFiltersAndLimit(t *testing.T) {
 	}
 
 	// 3) "to" in the far past excludes everything
-	noneOld, err := store.GetPlayStatsHistory(ctx, "user-filter", "JP", "", "1970-01-01", 0)
+	noneOld, err := store.GetPlayStatsHistory(ctx, "user-filter", "", "", "1970-01-01", 0)
 	if err != nil {
 		t.Fatalf("GetPlayStatsHistory(to=past): %v", err)
 	}
@@ -170,7 +180,7 @@ func TestGetPlayStatsHistoryFiltersAndLimit(t *testing.T) {
 	}
 
 	// 4) Filtering on a different user yields nothing
-	other, err := store.GetPlayStatsHistory(ctx, "user-other", "JP", "", "", 0)
+	other, err := store.GetPlayStatsHistory(ctx, "user-other", "", "", "", 0)
 	if err != nil {
 		t.Fatalf("GetPlayStatsHistory(other user): %v", err)
 	}
@@ -179,25 +189,48 @@ func TestGetPlayStatsHistoryFiltersAndLimit(t *testing.T) {
 	}
 }
 
-func TestGetPlayStatsCharacters(t *testing.T) {
+func TestGetMatchCharactersForUser(t *testing.T) {
 	ctx := context.Background()
-	_ = store.SavePlayStats(ctx, sampleSnapshot("user-3", "JP", ""))
-	_ = store.SavePlayStats(ctx, sampleSnapshot("user-3", "Ken", "rA"))
-	_ = store.SavePlayStats(ctx, sampleSnapshot("user-3", "Ken", "rB"))
-	_ = store.SavePlayStats(ctx, sampleSnapshot("user-4", "Ryu", ""))
-
-	got, err := store.GetPlayStatsCharacters(ctx, "user-3")
+	if err := store.SaveUser(ctx, model.User{Code: "char-list-u", DisplayName: "clu"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "char-list-u")
 	if err != nil {
-		t.Fatalf("GetPlayStatsCharacters: %v", err)
+		t.Fatalf("CreateSession: %v", err)
 	}
-	want := map[string]bool{"JP": true, "Ken": true}
-	if len(got) != len(want) {
-		t.Fatalf("character count = %d, want %d (got %v)", len(got), len(want), got)
-	}
-	for _, c := range got {
-		if !want[c] {
-			t.Errorf("unexpected character: %q", c)
+	// Two JP matches + one Ken match for char-list-u; plus a Ryu match for
+	// a different user that must not leak into the result.
+	for _, m := range []model.Match{
+		{UserId: "char-list-u", UserName: "clu", SessionId: sesh.Id, ReplayID: "cl-jp-1", Character: "JP", Date: "2026-05-23", Time: "10:00"},
+		{UserId: "char-list-u", UserName: "clu", SessionId: sesh.Id, ReplayID: "cl-jp-2", Character: "JP", Date: "2026-05-23", Time: "10:01"},
+		{UserId: "char-list-u", UserName: "clu", SessionId: sesh.Id, ReplayID: "cl-ken-1", Character: "Ken", Date: "2026-05-23", Time: "10:02"},
+	} {
+		if err := store.SaveMatch(ctx, m); err != nil {
+			t.Fatalf("SaveMatch: %v", err)
 		}
+	}
+	if err := store.SaveUser(ctx, model.User{Code: "char-list-other", DisplayName: "other"}); err != nil {
+		t.Fatalf("SaveUser other: %v", err)
+	}
+	otherSesh, err := store.CreateSession(ctx, "char-list-other")
+	if err != nil {
+		t.Fatalf("CreateSession other: %v", err)
+	}
+	if err := store.SaveMatch(ctx, model.Match{
+		UserId: "char-list-other", UserName: "other", SessionId: otherSesh.Id,
+		ReplayID: "cl-ryu-1", Character: "Ryu",
+		Date: "2026-05-23", Time: "10:00",
+	}); err != nil {
+		t.Fatalf("SaveMatch other: %v", err)
+	}
+
+	got, err := store.GetMatchCharactersForUser(ctx, "char-list-u")
+	if err != nil {
+		t.Fatalf("GetMatchCharactersForUser: %v", err)
+	}
+	// Expect DISTINCT + alphabetical: ["JP", "Ken"]; "Ryu" belongs to the other user.
+	if len(got) != 2 || got[0] != "JP" || got[1] != "Ken" {
+		t.Errorf("characters = %v, want [JP Ken]", got)
 	}
 }
 
@@ -409,6 +442,42 @@ func TestGetMatchesWithPlayStatsFiltersCharacterInSQL(t *testing.T) {
 	}
 	if got[0].Match.Character != "JP" {
 		t.Errorf("character = %q, want JP", got[0].Match.Character)
+	}
+}
+
+func TestGetMatchesWithPlayStatsAllCharacters(t *testing.T) {
+	ctx := context.Background()
+	if err := store.SaveUser(ctx, model.User{Code: "all-char-u", DisplayName: "acu"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "all-char-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	matches := []model.Match{
+		{UserId: "all-char-u", UserName: "acu", SessionId: sesh.Id, ReplayID: "ac-jp-1", Character: "JP", Date: "2026-05-23", Time: "10:00"},
+		{UserId: "all-char-u", UserName: "acu", SessionId: sesh.Id, ReplayID: "ac-ken-1", Character: "Ken", Date: "2026-05-23", Time: "11:00"},
+	}
+	for _, m := range matches {
+		if err := store.SaveMatch(ctx, m); err != nil {
+			t.Fatalf("SaveMatch: %v", err)
+		}
+	}
+
+	// Empty character must include both JP and Ken matches.
+	got, err := store.GetMatchesWithPlayStats(ctx, "all-char-u", "", 0, 0)
+	if err != nil {
+		t.Fatalf("GetMatchesWithPlayStats(all chars): %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 matches across all chars, got %d", len(got))
+	}
+	seen := map[string]bool{}
+	for _, m := range got {
+		seen[m.Match.Character] = true
+	}
+	if !seen["JP"] || !seen["Ken"] {
+		t.Errorf("missing character in result: seen=%v", seen)
 	}
 }
 
