@@ -5,7 +5,7 @@ export function formatRate(value: number | null | undefined): string {
 
 export function formatPerMatchCount(value: number | null | undefined): string {
   if (value == null) return '—'
-  return `${value.toFixed(1)} 回`
+  return value.toFixed(1)
 }
 
 export function formatSeconds(value: number | null | undefined): string {
