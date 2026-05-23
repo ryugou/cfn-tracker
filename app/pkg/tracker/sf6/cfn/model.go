@@ -719,8 +719,8 @@ type PlayProps struct {
 type BattleStats struct {
 	BattleHubMatchPlayCount          int     `json:"battle_hub_match_play_count"`
 	CasualMatchPlayCount             int     `json:"casual_match_play_count"`
-	CornerTime                       int     `json:"corner_time"`
-	CorneredTime                     int     `json:"cornered_time"`
+	CornerTime                       float64 `json:"corner_time"`
+	CorneredTime                     float64 `json:"cornered_time"`
 	CustomRoomMatchPlayCount         int     `json:"custom_room_match_play_count"`
 	DriveImpact                      float64 `json:"drive_impact"`
 	DriveImpactToDriveImpact         float64 `json:"drive_impact_to_drive_impact"`

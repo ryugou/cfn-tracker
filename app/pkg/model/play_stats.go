@@ -16,8 +16,8 @@ type PlayStatsSnapshot struct {
 	// battle_stats
 	BattleHubMatchPlayCount          int     `db:"battle_hub_match_play_count" json:"battleHubMatchPlayCount"`
 	CasualMatchPlayCount             int     `db:"casual_match_play_count" json:"casualMatchPlayCount"`
-	CornerTime                       int     `db:"corner_time" json:"cornerTime"`
-	CorneredTime                     int     `db:"cornered_time" json:"corneredTime"`
+	CornerTime                       float64 `db:"corner_time" json:"cornerTime"`
+	CorneredTime                     float64 `db:"cornered_time" json:"corneredTime"`
 	CustomRoomMatchPlayCount         int     `db:"custom_room_match_play_count" json:"customRoomMatchPlayCount"`
 	DriveImpact                      float64 `db:"drive_impact" json:"driveImpact"`
 	DriveImpactToDriveImpact         float64 `db:"drive_impact_to_drive_impact" json:"driveImpactToDriveImpact"`

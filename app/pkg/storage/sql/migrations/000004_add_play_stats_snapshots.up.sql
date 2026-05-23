@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS play_stats_snapshots (
 
   battle_hub_match_play_count INTEGER,
   casual_match_play_count INTEGER,
-  corner_time INTEGER,
-  cornered_time INTEGER,
+  corner_time REAL,
+  cornered_time REAL,
   custom_room_match_play_count INTEGER,
   drive_impact REAL,
   drive_impact_to_drive_impact REAL,

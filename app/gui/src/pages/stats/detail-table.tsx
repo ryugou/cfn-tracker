@@ -66,7 +66,7 @@ export function DetailTable({ userId, character }: Props) {
                   </td>
                   <td className='p-1 text-right'>{r.stats?.justParry?.toFixed(1) ?? '—'}</td>
                   <td className='p-1 text-right'>{r.stats?.throwTech?.toFixed(1) ?? '—'}</td>
-                  <td className='p-1 text-right'>{r.stats?.cornerTime ?? '—'}</td>
+                  <td className='p-1 text-right'>{r.stats?.cornerTime?.toFixed(1) ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
