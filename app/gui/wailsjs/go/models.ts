@@ -159,6 +159,7 @@ export namespace model {
 	    statsPeriod30Days: string;
 	    statsPeriodAllTime: string;
 	    statsCharacter: string;
+	    statsAllCharacters: string;
 	    statsUser: string;
 	    statsPreviousDelta: string;
 	    statsTooltip: string;

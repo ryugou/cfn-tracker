@@ -66,16 +66,18 @@ export function StatsPage() {
   React.useEffect(() => {
     if (!selectedUser) return
     let active = true
+    // Source from matches.character (per-character views are derived from
+    // match deltas; snapshots are user-wide). Empty selectedChar = "all".
     GetPlayStatsCharacters(selectedUser)
       .then(cs => {
         if (!active) return
         setError(null)
         const characters = cs ?? []
         setCharacters(characters)
-        if (characters.length === 0) {
+        // Reset to "all" when the previously selected character no longer
+        // exists for this user; otherwise preserve the selection.
+        if (selectedChar !== '' && !characters.includes(selectedChar)) {
           setSelectedChar('')
-        } else if (!characters.includes(selectedChar)) {
-          setSelectedChar(characters[0])
         }
       })
       .catch(e => {
@@ -87,11 +89,7 @@ export function StatsPage() {
   }, [selectedUser])
 
   React.useEffect(() => {
-    if (!selectedUser || !selectedChar) return
-    // Guard against starting a fetch when selectedUser has just changed but
-    // the characters effect has not yet re-validated selectedChar against the
-    // new user's character list.
-    if (characters.length > 0 && !characters.includes(selectedChar)) return
+    if (!selectedUser) return
     let active = true
     setLoading(true)
     const today = new Date()
@@ -101,9 +99,11 @@ export function StatsPage() {
       const d = new Date(today.getTime() - days * 86400000)
       from = d.toISOString().slice(0, 10)
     }
-    GetPlayStatsHistory(selectedUser, selectedChar, from, '', 0)
+    // Snapshots are user-wide; the character argument is accepted by the
+    // Wails binding for backwards compatibility but ignored by the backend.
+    GetPlayStatsHistory(selectedUser, '', from, '', 0)
       .then(rows => {
-        // Drop late responses for a stale (user, char, period) tuple so they
+        // Drop late responses for a stale (user, period) tuple so they
         // cannot overwrite the current selection's history.
         if (!active) return
         setError(null)
@@ -118,12 +118,11 @@ export function StatsPage() {
     return () => {
       // Always clear loading on cleanup. The in-flight promise's `.finally`
       // skips state updates when active=false, so without this the spinner
-      // would stick if the next effect short-circuits (e.g. characters guard
-      // early-returns or selection becomes incomplete).
+      // would stick across rapid selection changes.
       active = false
       setLoading(false)
     }
-  }, [selectedUser, selectedChar, period, characters])
+  }, [selectedUser, period])
 
   // Empty / placeholder states (spec §5)
   if (!users.length && history.length === 0) {
@@ -168,6 +167,7 @@ export function StatsPage() {
             onChange={e => setSelectedChar(e.target.value)}
             className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
           >
+            <option value=''>{t('statsAllCharacters')}</option>
             {characters.map(c => (
               <option key={c} value={c}>
                 {c}

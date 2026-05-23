@@ -6,6 +6,9 @@ import { model } from '@model'
 import type { LocalizationKey } from '@/main/i18n'
 
 type Props = {
+  // User-wide snapshot history (per Capcom /play `battle_stats`, which is
+  // a user-level aggregate, not per-character). The chart renders the raw
+  // accumulated trend; per-character attribution lives in the detail table.
   history: model.PlayStatsSnapshot[]
 }
 
