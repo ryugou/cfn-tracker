@@ -95,11 +95,11 @@ export function StatsPage() {
         <Page.Title>{t('statsTitle')}</Page.Title>
       </Page.Header>
 
-      <div className='mb-4 flex gap-2'>
+      <div className='mb-4 flex items-center gap-2'>
         <select
           value={selectedUser}
           onChange={e => setSelectedUser(e.target.value)}
-          className='bg-zinc-800 px-2 py-1'
+          className='h-8 min-w-[140px] rounded bg-zinc-800 px-2'
         >
           {users.map(u => (
             <option key={u.code} value={u.code}>
@@ -110,7 +110,7 @@ export function StatsPage() {
         <select
           value={selectedChar}
           onChange={e => setSelectedChar(e.target.value)}
-          className='bg-zinc-800 px-2 py-1'
+          className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
         >
           {characters.map(c => (
             <option key={c} value={c}>
@@ -121,7 +121,7 @@ export function StatsPage() {
         <select
           value={period}
           onChange={e => setPeriod(e.target.value as Period)}
-          className='bg-zinc-800 px-2 py-1'
+          className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
         >
           <option value='7'>{t('statsPeriod7Days')}</option>
           <option value='30'>{t('statsPeriod30Days')}</option>
