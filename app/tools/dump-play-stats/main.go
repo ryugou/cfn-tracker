@@ -17,10 +17,8 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -150,9 +148,9 @@ func authenticate(ctx context.Context, page *rod.Page, email, password string) e
 
 	if strings.Contains(page.MustInfo().URL, "agecheck") {
 		page.MustElement("#country").MustSelect("United States")
-		page.MustElement("#birthYear").MustSelect(strconv.Itoa(1970 + rand.Intn(29)))
-		page.MustElement("#birthMonth").MustSelect(strconv.Itoa(1 + rand.Intn(11)))
-		page.MustElement("#birthDay").MustSelect(strconv.Itoa(1 + rand.Intn(27)))
+		page.MustElement("#birthYear").MustSelect("1990")
+		page.MustElement("#birthMonth").MustSelect("6")
+		page.MustElement("#birthDay").MustSelect("15")
 		page.MustElement(`form button[type="submit"]`).MustClick()
 		page.MustWaitLoad().MustWaitRequestIdle()
 	}
