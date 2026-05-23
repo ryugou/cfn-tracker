@@ -14,17 +14,35 @@ export function DetailTable({ userId, character }: Props) {
   const [open, setOpen] = React.useState(false)
   const [rows, setRows] = React.useState<model.MatchWithStats[]>([])
   const [loading, setLoading] = React.useState(false)
-
-  const load = () => {
-    setLoading(true)
-    GetMatchesWithPlayStats(userId, character, 50, 0)
-      .then(r => setRows(r ?? []))
-      .finally(() => setLoading(false))
-  }
+  const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    if (open && rows.length === 0) load()
-  }, [open])
+    if (!open) return
+    let active = true
+    setRows([])
+    setLoading(true)
+    GetMatchesWithPlayStats(userId, character, 50, 0)
+      .then(r => {
+        // Drop late responses for a stale (userId, character) pair so a
+        // delayed previous request cannot clobber the current selection.
+        if (!active) return
+        setError(null)
+        setRows(r ?? [])
+      })
+      .catch(e => {
+        if (active) setError(String(e))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      // Clear loading on cleanup so the spinner doesn't stick when the
+      // detail panel collapses or props change mid-flight (the .finally
+      // skips state updates once active is false).
+      active = false
+      setLoading(false)
+    }
+  }, [open, userId, character])
 
   return (
     <div className='mt-6'>
@@ -35,6 +53,11 @@ export function DetailTable({ userId, character }: Props) {
       {open && (
         <div className='mt-3 overflow-x-auto'>
           {loading && <p className='text-white/60'>{t('loading')}</p>}
+          {error && (
+            <p className='text-sm text-rose-400'>
+              {t('errGetPlayStats')}: {error}
+            </p>
+          )}
           <table className='w-full text-xs'>
             <thead className='text-white/60'>
               <tr>
