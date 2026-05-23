@@ -194,7 +194,9 @@ export function StatsPage() {
         )}
 
         {history.length === 0 && !loading && (
-          <p className='mt-8 text-center text-white/60'>{t('statsEmptyTracking')}</p>
+          <p className='mt-8 text-center text-white/60'>
+            {game === model.GameType.STREET_FIGHTER_6 ? t('statsEmptyTracking') : t('statsSf6Only')}
+          </p>
         )}
 
         {history.length > 0 && (
