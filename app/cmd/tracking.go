@@ -177,7 +177,7 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 	}
 
 	go func() {
-		slog.Info("polling")
+		slog.Debug("polling")
 		match, err := ch.gameTracker.Poll(ctx, session)
 		if err != nil {
 			cancel()
@@ -195,7 +195,7 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 				}
 				onNewMatch(match)
 			case <-ticker.C:
-				slog.Info("polling")
+				slog.Debug("polling")
 				match, err := ch.gameTracker.Poll(ctx, session)
 				if err != nil {
 					cancel()
