@@ -335,7 +335,7 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 	for i := range imported {
 		match := imported[i]
 		prev := getPreviousMatchForCharacterInSession(session, match.Character)
-		match = ApplyRunningCounters(match, prev)
+		match = applyRunningCounters(match, prev)
 
 		// Persist the match before mutating any in-memory or downstream state
 		// so memory, DB, and UI never diverge. Inspect SaveMatchIfNew because
@@ -387,7 +387,7 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 	return emitted
 }
 
-// ApplyRunningCounters fills in Wins/Losses/WinStreak/WinRate/LPGain/MRGain
+// applyRunningCounters fills in Wins/Losses/WinStreak/WinRate/LPGain/MRGain
 // on match by carrying forward prev's counters and incrementing based on
 // match.Victory. Pure function — no DB or state side-effects.
 //
@@ -403,7 +403,7 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 // running total every alternate result. Mirror the live SF6Tracker.Poll
 // pattern: copy both prev counters first, then increment only the
 // relevant one.
-func ApplyRunningCounters(match, prev model.Match) model.Match {
+func applyRunningCounters(match, prev model.Match) model.Match {
 	match.Wins = prev.Wins
 	match.Losses = prev.Losses
 	match.WinStreak = prev.WinStreak
