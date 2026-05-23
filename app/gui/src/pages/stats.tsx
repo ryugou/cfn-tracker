@@ -95,7 +95,7 @@ export function StatsPage() {
         <Page.Title>{t('statsTitle')}</Page.Title>
       </Page.Header>
 
-      <div className='h-full overflow-y-auto px-8 py-4'>
+      <div className='min-h-0 overflow-y-scroll px-8 py-4'>
         <div className='mb-4 flex items-center gap-2'>
           <select
             value={selectedUser}
