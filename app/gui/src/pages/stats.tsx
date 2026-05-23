@@ -216,7 +216,6 @@ export function StatsPage() {
                     label={t(spec.key)}
                     value={spec.format(spec.value(curr))}
                     delta={delta}
-                    tooltip={t('statsTooltip')}
                   />
                 )
               })}

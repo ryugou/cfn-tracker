@@ -6,13 +6,12 @@ type Props = {
   label: string
   value: string
   delta: { text: string; direction: 'up' | 'down' | 'flat' }
-  tooltip?: string
 }
 
-export function KpiCard({ label, value, delta, tooltip }: Props) {
+export function KpiCard({ label, value, delta }: Props) {
   const arrow = delta.direction === 'up' ? '↑' : delta.direction === 'down' ? '↓' : ''
   return (
-    <div className='min-w-[120px] rounded-lg bg-zinc-800/80 p-3' title={tooltip}>
+    <div className='min-w-[120px] rounded-lg bg-zinc-800/80 p-3'>
       <div className='mb-1 text-xs text-white/60'>{label}</div>
       <div className='text-xl text-white tabular-nums'>{value}</div>
       <div
