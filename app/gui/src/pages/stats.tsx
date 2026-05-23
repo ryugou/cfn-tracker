@@ -40,28 +40,59 @@ export function StatsPage() {
   const [period, setPeriod] = React.useState<Period>('30')
   const [history, setHistory] = React.useState<model.PlayStatsSnapshot[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    GetUsers().then(us => {
-      setUsers(us ?? [])
-      if (!selectedUser && trackingUser) {
-        setSelectedUser(trackingUser.code)
-      } else if (!selectedUser && us?.length) {
-        setSelectedUser(us[0].code)
-      }
-    })
+    let active = true
+    GetUsers()
+      .then(us => {
+        if (!active) return
+        setError(null)
+        setUsers(us ?? [])
+        if (!selectedUser && trackingUser) {
+          setSelectedUser(trackingUser.code)
+        } else if (!selectedUser && us?.length) {
+          setSelectedUser(us[0].code)
+        }
+      })
+      .catch(e => {
+        if (active) setError(String(e))
+      })
+    return () => {
+      active = false
+    }
   }, [trackingUser])
 
   React.useEffect(() => {
     if (!selectedUser) return
-    GetPlayStatsCharacters(selectedUser).then(cs => {
-      setCharacters(cs ?? [])
-      if (cs?.length && !selectedChar) setSelectedChar(cs[0])
-    })
+    let active = true
+    GetPlayStatsCharacters(selectedUser)
+      .then(cs => {
+        if (!active) return
+        setError(null)
+        const characters = cs ?? []
+        setCharacters(characters)
+        if (characters.length === 0) {
+          setSelectedChar('')
+        } else if (!characters.includes(selectedChar)) {
+          setSelectedChar(characters[0])
+        }
+      })
+      .catch(e => {
+        if (active) setError(String(e))
+      })
+    return () => {
+      active = false
+    }
   }, [selectedUser])
 
   React.useEffect(() => {
     if (!selectedUser || !selectedChar) return
+    // Guard against starting a fetch when selectedUser has just changed but
+    // the characters effect has not yet re-validated selectedChar against the
+    // new user's character list.
+    if (characters.length > 0 && !characters.includes(selectedChar)) return
+    let active = true
     setLoading(true)
     const today = new Date()
     let from = ''
@@ -71,9 +102,28 @@ export function StatsPage() {
       from = d.toISOString().slice(0, 10)
     }
     GetPlayStatsHistory(selectedUser, selectedChar, from, '', 0)
-      .then(rows => setHistory(rows ?? []))
-      .finally(() => setLoading(false))
-  }, [selectedUser, selectedChar, period])
+      .then(rows => {
+        // Drop late responses for a stale (user, char, period) tuple so they
+        // cannot overwrite the current selection's history.
+        if (!active) return
+        setError(null)
+        setHistory(rows ?? [])
+      })
+      .catch(e => {
+        if (active) setError(String(e))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      // Always clear loading on cleanup. The in-flight promise's `.finally`
+      // skips state updates when active=false, so without this the spinner
+      // would stick if the next effect short-circuits (e.g. characters guard
+      // early-returns or selection becomes incomplete).
+      active = false
+      setLoading(false)
+    }
+  }, [selectedUser, selectedChar, period, characters])
 
   // Empty / placeholder states (spec §5)
   if (!users.length && history.length === 0) {
@@ -82,6 +132,11 @@ export function StatsPage() {
         <Page.Header>
           <Page.Title>{t('statsTitle')}</Page.Title>
         </Page.Header>
+        {error && (
+          <p className='mt-4 text-center text-sm text-rose-400'>
+            {t('errGetPlayStats')}: {error}
+          </p>
+        )}
         <p className='mt-12 text-center text-white/60'>
           {game === model.GameType.STREET_FIGHTER_6 ? t('statsEmptyTracking') : t('statsSf6Only')}
         </p>
@@ -131,6 +186,12 @@ export function StatsPage() {
         </div>
 
         {loading && <p className='text-white/60'>{t('loading')}</p>}
+
+        {error && (
+          <p className='mt-2 text-sm text-rose-400'>
+            {t('errGetPlayStats')}: {error}
+          </p>
+        )}
 
         {history.length === 0 && !loading && (
           <p className='mt-8 text-center text-white/60'>{t('statsEmptyTracking')}</p>
