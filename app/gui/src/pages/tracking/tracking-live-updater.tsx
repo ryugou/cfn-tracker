@@ -156,7 +156,7 @@ export function TrackingLiveUpdater() {
                 userInteracted.current = true
                 setSelectedChar(e.target.value)
               }}
-              className='h-7 min-w-[140px] rounded bg-zinc-800 px-2 text-sm'
+              className='min-w-[140px] rounded bg-zinc-800 px-2 py-1.5 text-sm'
             >
               {characters.map(c => (
                 <option key={c} value={c}>

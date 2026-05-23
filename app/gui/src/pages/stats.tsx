@@ -154,7 +154,7 @@ export function StatsPage() {
           <select
             value={selectedUser}
             onChange={e => setSelectedUser(e.target.value)}
-            className='h-8 min-w-[140px] rounded bg-zinc-800 px-2'
+            className='min-w-[140px] rounded bg-zinc-800 px-2 py-1.5'
           >
             {users.map(u => (
               <option key={u.code} value={u.code}>
@@ -165,7 +165,7 @@ export function StatsPage() {
           <select
             value={selectedChar}
             onChange={e => setSelectedChar(e.target.value)}
-            className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
+            className='min-w-[120px] rounded bg-zinc-800 px-2 py-1.5'
           >
             <option value=''>{t('statsAllCharacters')}</option>
             {characters.map(c => (
@@ -177,7 +177,7 @@ export function StatsPage() {
           <select
             value={period}
             onChange={e => setPeriod(e.target.value as Period)}
-            className='h-8 min-w-[120px] rounded bg-zinc-800 px-2'
+            className='min-w-[120px] rounded bg-zinc-800 px-2 py-1.5'
           >
             <option value='7'>{t('statsPeriod7Days')}</option>
             <option value='30'>{t('statsPeriod30Days')}</option>
