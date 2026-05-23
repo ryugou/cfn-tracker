@@ -134,8 +134,9 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 		}
 	}
 
-	backfilled := ch.backfillSf6(ctx, session)
-
+	// Placeholder first so the UI has username + LP rendered immediately.
+	// Backfill follows; its per-match emits override the placeholder, and
+	// the last backfilled match leaves the UI in the correct cumulative state.
 	ch.eventEmitter("match", model.Match{
 		UserName:  session.UserName,
 		LP:        session.LP,
@@ -143,6 +144,8 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 		SessionId: session.Id,
 		UserId:    session.UserId,
 	})
+
+	backfilled := ch.backfillSf6(ctx, session)
 
 	ticker := time.NewTicker(30 * time.Second)
 	ch.forcePollChan = make(chan struct{})
