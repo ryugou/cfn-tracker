@@ -419,7 +419,7 @@ T8 (`*t8.T8Tracker`) のときは型アサーションに失敗するのでス�
     - 詳細展開 (全 55 列テーブル、matches 結果と JOIN 表示)
     - 空状態 (0 件 / 1 件) ハンドリング
 12. **ルート追加**: `app/gui/src/main/router.tsx` に `/stats` を追加
-13. **サイドバー**: `app/gui/src/main/app-sidebar.tsx` に「実績推移」リンクを追加。`AuthMachineContext` の `game === GameType.SF6` のときだけ表示
+13. **サイドバー**: `app/gui/src/main/app-sidebar.tsx` に「実績推移」リンクを追加。**常時表示** (§5 の方針)。ページ側で SF6 トラッキング有無を判定して中身を出し分ける
 14. **SF6 限定プレースホルダ**: `/stats` を T8 で開いた場合の表示
 
 ### 6.3 テスト
