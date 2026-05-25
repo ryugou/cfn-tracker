@@ -421,6 +421,171 @@ func TestGetLatestMatchForUserAndCharacter(t *testing.T) {
 	}
 }
 
+func TestGetLatestPlayStatsSnapshot(t *testing.T) {
+	ctx := context.Background()
+
+	// No snapshots
+	got, err := store.GetLatestPlayStatsSnapshot(ctx, "no-such-user")
+	if err != nil {
+		t.Fatalf("GetLatestPlayStatsSnapshot (empty): %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for unknown user, got %+v", got)
+	}
+
+	// snapshot_at is server-set on insert (CURRENT_TIMESTAMP default in the
+	// schema), so to assert that ORDER BY snapshot_at DESC wins we override
+	// the timestamps with raw UPDATEs after insert. rB gets the newer
+	// snapshot_at; rA gets the older one.
+	if err := store.SavePlayStats(ctx, sampleSnapshot("latest-u", "JP", "rA")); err != nil {
+		t.Fatalf("SavePlayStats rA: %v", err)
+	}
+	if err := store.SavePlayStats(ctx, sampleSnapshot("latest-u", "JP", "rB")); err != nil {
+		t.Fatalf("SavePlayStats rB: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE play_stats_snapshots SET snapshot_at = ? WHERE user_id = ? AND match_replay_id = ?`,
+		"2026-01-01 00:00:00", "latest-u", "rA",
+	); err != nil {
+		t.Fatalf("update rA snapshot_at: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE play_stats_snapshots SET snapshot_at = ? WHERE user_id = ? AND match_replay_id = ?`,
+		"2026-06-01 12:00:00", "latest-u", "rB",
+	); err != nil {
+		t.Fatalf("update rB snapshot_at: %v", err)
+	}
+
+	got, err = store.GetLatestPlayStatsSnapshot(ctx, "latest-u")
+	if err != nil {
+		t.Fatalf("GetLatestPlayStatsSnapshot: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected a snapshot, got nil")
+	}
+	if got.MatchReplayId.String != "rB" {
+		t.Errorf("MatchReplayId = %q, want rB (newest by snapshot_at)", got.MatchReplayId.String)
+	}
+
+	// user-wide semantics: even after a snapshot tagged with a different
+	// character is inserted, the user-level lookup must still return the
+	// most recent snapshot regardless of character.
+	if err := store.SavePlayStats(ctx, sampleSnapshot("latest-u", "Ken", "rC")); err != nil {
+		t.Fatalf("SavePlayStats rC: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE play_stats_snapshots SET snapshot_at = ? WHERE user_id = ? AND match_replay_id = ?`,
+		"2026-12-01 00:00:00", "latest-u", "rC",
+	); err != nil {
+		t.Fatalf("update rC snapshot_at: %v", err)
+	}
+	got, err = store.GetLatestPlayStatsSnapshot(ctx, "latest-u")
+	if err != nil {
+		t.Fatalf("GetLatestPlayStatsSnapshot (cross-char): %v", err)
+	}
+	if got == nil || got.MatchReplayId.String != "rC" {
+		t.Errorf("cross-character latest = %+v, want rC", got)
+	}
+
+	// Tiebreak when snapshot_at is identical: id DESC wins.
+	if err := store.SavePlayStats(ctx, sampleSnapshot("tie-u", "JP", "tie-A")); err != nil {
+		t.Fatalf("SavePlayStats tie-A: %v", err)
+	}
+	if err := store.SavePlayStats(ctx, sampleSnapshot("tie-u", "JP", "tie-B")); err != nil {
+		t.Fatalf("SavePlayStats tie-B: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE play_stats_snapshots SET snapshot_at = '2026-03-01 09:00:00' WHERE user_id = 'tie-u'`,
+	); err != nil {
+		t.Fatalf("update tie snapshot_at: %v", err)
+	}
+	got, err = store.GetLatestPlayStatsSnapshot(ctx, "tie-u")
+	if err != nil {
+		t.Fatalf("GetLatestPlayStatsSnapshot (tiebreak): %v", err)
+	}
+	if got == nil || got.MatchReplayId.String != "tie-B" {
+		t.Errorf("tiebreak latest = %+v, want tie-B (higher id)", got)
+	}
+}
+
+func TestGetMatchesWithPlayStatsDuplicateSnapshotPicksLatest(t *testing.T) {
+	ctx := context.Background()
+
+	if err := store.SaveUser(ctx, model.User{Code: "dup-u", DisplayName: "du"}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	sesh, err := store.CreateSession(ctx, "dup-u")
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := store.SaveMatch(ctx, model.Match{
+		UserId: "dup-u", UserName: "du", SessionId: sesh.Id,
+		ReplayID: "dup-replay", Character: "JP",
+		Date: "2026-05-25", Time: "12:00",
+	}); err != nil {
+		t.Fatalf("SaveMatch: %v", err)
+	}
+
+	// Two snapshots for the same (user, match_replay_id) — should not happen
+	// in production, but we want the lookup to be deterministic if it does.
+	// Insert in order, then key UPDATEs by the auto-increment id (the older
+	// row has the lower id) so the timestamp assignment doesn't depend on
+	// fragile float-value matching.
+	older := sampleSnapshot("dup-u", "JP", "dup-replay")
+	older.DriveImpact = 0.111
+	if err := store.SavePlayStats(ctx, older); err != nil {
+		t.Fatalf("SavePlayStats older: %v", err)
+	}
+	newer := sampleSnapshot("dup-u", "JP", "dup-replay")
+	newer.DriveImpact = 0.999
+	if err := store.SavePlayStats(ctx, newer); err != nil {
+		t.Fatalf("SavePlayStats newer: %v", err)
+	}
+
+	var olderId, newerId int64
+	if err := store.db.GetContext(ctx, &olderId,
+		`SELECT MIN(id) FROM play_stats_snapshots WHERE user_id = 'dup-u' AND match_replay_id = 'dup-replay'`,
+	); err != nil {
+		t.Fatalf("select older id: %v", err)
+	}
+	if err := store.db.GetContext(ctx, &newerId,
+		`SELECT MAX(id) FROM play_stats_snapshots WHERE user_id = 'dup-u' AND match_replay_id = 'dup-replay'`,
+	); err != nil {
+		t.Fatalf("select newer id: %v", err)
+	}
+	// Guard against a future refactor that accidentally collapses both
+	// inserts into a single row — the rest of the test would silently pass
+	// on garbage assertions if older and newer pointed at the same row.
+	if olderId == newerId {
+		t.Fatalf("expected two distinct snapshot rows, both ids = %d", olderId)
+	}
+	// Pin snapshot_at so "newer" really is newer than "older".
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE play_stats_snapshots SET snapshot_at = '2026-05-25 11:00:00' WHERE id = ?`, olderId,
+	); err != nil {
+		t.Fatalf("update older snapshot_at: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx,
+		`UPDATE play_stats_snapshots SET snapshot_at = '2026-05-25 13:00:00' WHERE id = ?`, newerId,
+	); err != nil {
+		t.Fatalf("update newer snapshot_at: %v", err)
+	}
+
+	got, err := store.GetMatchesWithPlayStats(ctx, "dup-u", "JP", 0, 0)
+	if err != nil {
+		t.Fatalf("GetMatchesWithPlayStats: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("want 1 match, got %d", len(got))
+	}
+	if got[0].Stats == nil {
+		t.Fatal("expected stats attached, got nil")
+	}
+	if got[0].Stats.DriveImpact != 0.999 {
+		t.Errorf("DriveImpact = %v, want 0.999 (newest snapshot wins)", got[0].Stats.DriveImpact)
+	}
+}
+
 func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
 	ctx := context.Background()
 

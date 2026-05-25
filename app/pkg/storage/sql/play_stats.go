@@ -103,6 +103,48 @@ func (s *Storage) GetPlayStatsHistory(
 	return rows, nil
 }
 
+// GetLatestPlayStatsSnapshot returns the most recent play_stats_snapshots
+// row for the given user, or (nil, nil) when none exists. Used by the
+// baseline dedup check during StartTracking — strictly better than the
+// previous full-day GetPlayStatsHistory scan, since `LIMIT 1` lets SQLite
+// stop emitting rows after the first.
+//
+// The existing index is idx_play_stats_user_char_at(user_id, character,
+// snapshot_at). With a user-only WHERE clause SQLite still uses that index
+// to find the user's rows but cannot avoid a sort because the leading
+// `character` column splits snapshot_at across character buckets. That is
+// acceptable here: this query runs once per StartTracking, snapshot volume
+// per user is small (handful per session), and any sort cost is dwarfed by
+// the Capcom /play HTTP call it gates. If per-user snapshot counts ever
+// grow past ~10k (e.g. months of continuous tracking with high turnover),
+// add a dedicated idx_play_stats_user_at(user_id, snapshot_at, id) so this
+// becomes a pure index seek.
+//
+// Snapshots are user-wide aggregates (see GetPlayStatsHistory's docstring);
+// scoping this lookup by character would let a favorite-character switch
+// silently bypass the 30-minute dedup window — the first restart on the new
+// character would always insert a duplicate baseline even if a recent
+// snapshot already covers the user. Filter by user only.
+func (s *Storage) GetLatestPlayStatsSnapshot(
+	ctx context.Context,
+	userId string,
+) (*model.PlayStatsSnapshot, error) {
+	query := `
+		SELECT * FROM play_stats_snapshots
+		WHERE user_id = ?
+		ORDER BY snapshot_at DESC, id DESC
+		LIMIT 1
+	`
+	var rows []*model.PlayStatsSnapshot
+	if err := s.db.SelectContext(ctx, &rows, query, userId); err != nil {
+		return nil, fmt.Errorf("get latest play stats snapshot: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
+}
+
 func (s *Storage) GetMatchesWithPlayStats(
 	ctx context.Context,
 	userId, character string,
@@ -153,9 +195,16 @@ func (s *Storage) GetMatchesWithPlayStats(
 		// match_replay_id) only — joining on character would drop
 		// snapshots whose stored character tag doesn't match the match's
 		// character (e.g. when the user's favorite changed mid-session).
+		//
+		// ORDER BY snapshot_at ASC, id ASC pins the iteration order so the
+		// later (newest) row wins when the same (user_id, match_replay_id)
+		// has multiple snapshots — without it, map assignment is at the
+		// mercy of SQLite's row order and a duplicate could leave an older
+		// snapshot stuck in the result.
 		q, args, err := sqlx.In(`
 			SELECT * FROM play_stats_snapshots
 			WHERE user_id = ? AND match_replay_id IN (?)
+			ORDER BY snapshot_at ASC, id ASC
 		`, userId, replayIds)
 		if err != nil {
 			return nil, fmt.Errorf("prepare stats lookup: %w", err)

@@ -99,29 +99,27 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 	session.UserName = user.DisplayName
 
 	// Baseline play stats snapshot (SF6 only). Skip if a recent snapshot
-	// already exists for the same (user, character) within 30 minutes —
-	// repeated stop/restart should not pile up empty match_replay_id NULL rows.
+	// already exists for the user within 30 minutes — repeated stop/restart
+	// should not pile up empty match_replay_id NULL rows. The check is
+	// user-wide (not per-character) because snapshots are user-level
+	// aggregates; scoping by character would silently bypass dedup whenever
+	// the user's favorite changed between restarts.
+	//
+	// We fetch only the single newest snapshot (ORDER BY snapshot_at DESC LIMIT 1)
+	// instead of an entire day's history; the previous full-day scan + Go-side
+	// last-row pick was wasteful for users with many snapshots per day.
 	if sf6Tracker, ok := ch.gameTracker.(*sf6.SF6Tracker); ok {
 		if res, err := sf6Tracker.PollPlayStats(ctx, user.Code); err == nil {
-			recent, _ := ch.sqlDb.GetPlayStatsHistory(
-				ctx, user.Code, res.Character,
-				time.Now().Add(-30*time.Minute).Format("2006-01-02"),
-				"", 0,
-			)
+			latest, latestErr := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, user.Code)
+			if latestErr != nil {
+				slog.Warn("baseline play stats lookup failed", slog.Any("error", latestErr))
+			}
 			shouldSave := true
-			// Results are ORDER BY snapshot_at ASC, so the last element is the newest.
-			// Iterate from newest backwards in case any rows have an unparseable timestamp.
-			for i := len(recent) - 1; i >= 0; i-- {
-				parsed, parseErr := time.Parse("2006-01-02 15:04:05", recent[i].SnapshotAt)
-				if parseErr != nil {
-					continue
-				}
-				if time.Since(parsed) < 30*time.Minute {
+			if latest != nil {
+				if parsed, parseErr := time.Parse("2006-01-02 15:04:05", latest.SnapshotAt); parseErr == nil &&
+					time.Since(parsed) < 30*time.Minute {
 					shouldSave = false
 				}
-				// Once we've inspected the newest parseable row we have the answer; older
-				// rows can only be older, so they can't improve the dedup decision.
-				break
 			}
 			if shouldSave {
 				snap := buildSnapshot(user.Code, res, "")
@@ -382,6 +380,14 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 		// polling where the 100-match window actually shifts.
 		// notify the GUI in real time
 		ch.eventEmitter("match", match)
+		// Fan out to non-GUI consumers (browser-source server, etc.) just like
+		// the live poll loop's onNewMatch does — without this, backfilled
+		// matches show up in the desktop UI but never reach OBS overlays.
+		for _, mc := range ch.matchChans {
+			if mc != nil {
+				mc <- match
+			}
+		}
 		emitted = true
 	}
 	return emitted
@@ -438,9 +444,9 @@ func getPreviousMatchForCharacterInSession(session *model.Session, character str
 	return model.Match{}
 }
 
-// playStatsSf6 captures a /play snapshot and saves it to SQLite. Returns
-// nil error on success; warnings are emitted via slog on failure but never
-// propagate so the surrounding match flow stays alive.
+// playStatsSf6 captures a /play snapshot and saves it to SQLite as a
+// best-effort, fire-and-forget operation. Failures are logged via slog
+// but never propagate to the surrounding match flow.
 func (ch *TrackingHandler) playStatsSf6(
 	ctx context.Context,
 	userCode string,
