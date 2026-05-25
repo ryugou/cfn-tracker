@@ -98,6 +98,19 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 	session.MR = user.MR
 	session.UserName = user.DisplayName
 
+	// Placeholder first so the UI has username + LP rendered immediately.
+	// Backfill follows; its per-match emits override the placeholder, and
+	// the last backfilled match leaves the UI in the correct cumulative state.
+	// Emitting before the baseline /play HTTP fetch keeps the UI responsive
+	// instead of blocking it on a network round-trip every StartTracking.
+	ch.eventEmitter("match", model.Match{
+		UserName:  session.UserName,
+		LP:        session.LP,
+		MR:        session.MR,
+		SessionId: session.Id,
+		UserId:    session.UserId,
+	})
+
 	// Baseline play stats snapshot (SF6 only). Skip if a recent snapshot
 	// already exists for the user within 30 minutes — repeated stop/restart
 	// should not pile up empty match_replay_id NULL rows. The check is
@@ -114,39 +127,36 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 	// We fetch only the single newest snapshot (ORDER BY snapshot_at DESC LIMIT 1)
 	// instead of an entire day's history; the previous full-day scan + Go-side
 	// last-row pick was wasteful for users with many snapshots per day.
+	//
+	// Runs asynchronously so the surrounding StartTracking flow (backfill,
+	// placeholder re-emit, polling loop) never waits on the Capcom /play
+	// round-trip. Best-effort; failures are logged via slog only.
 	if sf6Tracker, ok := ch.gameTracker.(*sf6.SF6Tracker); ok {
-		skip := false
-		latest, latestErr := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, user.Code)
-		if latestErr != nil {
-			slog.Warn("baseline play stats lookup failed", slog.Any("error", latestErr))
-		} else if latest != nil {
-			if parsed, parseErr := time.Parse("2006-01-02 15:04:05", latest.SnapshotAt); parseErr == nil &&
-				time.Since(parsed) < 30*time.Minute {
-				skip = true
+		userCode := user.Code
+		go func() {
+			skip := false
+			latest, latestErr := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, userCode)
+			if latestErr != nil {
+				slog.Warn("baseline play stats lookup failed", slog.Any("error", latestErr))
+			} else if latest != nil {
+				if parsed, parseErr := time.Parse("2006-01-02 15:04:05", latest.SnapshotAt); parseErr == nil &&
+					time.Since(parsed) < 30*time.Minute {
+					skip = true
+				}
 			}
-		}
-		if !skip {
-			if res, err := sf6Tracker.PollPlayStats(ctx, user.Code); err == nil {
-				snap := buildSnapshot(user.Code, res, "")
+			if skip {
+				return
+			}
+			if res, err := sf6Tracker.PollPlayStats(ctx, userCode); err == nil {
+				snap := buildSnapshot(userCode, res, "")
 				if err := ch.sqlDb.SavePlayStats(ctx, snap); err != nil {
 					slog.Warn("save baseline play stats failed", slog.Any("error", err))
 				}
 			} else {
 				slog.Warn("baseline play stats fetch failed", slog.Any("error", err))
 			}
-		}
+		}()
 	}
-
-	// Placeholder first so the UI has username + LP rendered immediately.
-	// Backfill follows; its per-match emits override the placeholder, and
-	// the last backfilled match leaves the UI in the correct cumulative state.
-	ch.eventEmitter("match", model.Match{
-		UserName:  session.UserName,
-		LP:        session.LP,
-		MR:        session.MR,
-		SessionId: session.Id,
-		UserId:    session.UserId,
-	})
 
 	backfilled := ch.backfillSf6(ctx, session)
 

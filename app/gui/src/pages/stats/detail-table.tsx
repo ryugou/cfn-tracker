@@ -14,10 +14,11 @@ type Props = {
 
 type Snapshot = model.PlayStatsSnapshot
 
-// Stats reported by Capcom in `battle_stats` are per-100-match averages
-// (e.g. "1.32 Drive Impact landed per 100 matches"). To turn the user-wide
-// snapshot delta between two matches into the count attributable to a
-// single match, multiply by 100. Display as integer counts.
+// Capcom returns battle_stats as per-match averages over a sliding window of
+// the last 100 ranked matches. The difference between two adjacent snapshots
+// reflects how that average shifted across one match. Multiplying the delta
+// by DELTA_SCALE (100) approximates the contribution attributable to that
+// single match, since the moving average is normalized by the window size.
 const DELTA_SCALE = 100
 
 function formatDelta(value: number | undefined): string {

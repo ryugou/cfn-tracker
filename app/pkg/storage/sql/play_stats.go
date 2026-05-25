@@ -90,10 +90,15 @@ func (s *Storage) GetPlayStatsHistory(
 	if limit > 0 {
 		limitClause = fmt.Sprintf("LIMIT %d", limit)
 	}
+	// snapshot_at is DATETIME('NOW') with second precision; two snapshots
+	// inserted in the same second would otherwise order non-deterministically,
+	// breaking the UI delta calculation (which relies on adjacent rows in this
+	// stream being chronologically adjacent). `id` is AUTOINCREMENT, so it
+	// preserves insert order and acts as a stable tiebreaker.
 	query := fmt.Sprintf(`
 		SELECT * FROM play_stats_snapshots
 		WHERE %s
-		ORDER BY snapshot_at ASC
+		ORDER BY snapshot_at ASC, id ASC
 		%s
 	`, strings.Join(wheres, " AND "), limitClause)
 	var rows []*model.PlayStatsSnapshot
