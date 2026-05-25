@@ -250,6 +250,7 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 	}()
 
 	for match := range matchChan {
+		match := match // shadow loop var before taking &match (defensive even on Go 1.22+)
 		ch.eventEmitter("match", match)
 
 		session.LP = match.LP
@@ -346,6 +347,9 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 	// the live loop uses so wins/losses/streak are computed per character and the
 	// UI gets a match event for each.
 	for i := range imported {
+		// Local copy per iteration before taking &match below; this fresh
+		// declaration is the defensive shadow Copilot R5 asked for and is
+		// the same pattern the live match-channel loop uses.
 		match := imported[i]
 		prev := getPreviousMatchForCharacterInSession(session, match.Character)
 		match = applyRunningCounters(match, prev)

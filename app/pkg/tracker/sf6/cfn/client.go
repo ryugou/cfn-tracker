@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/browser"
@@ -25,15 +26,21 @@ type CFNClient interface {
 
 type Client struct {
 	browser *browser.Browser
+	// mu serializes access to browser.Page across concurrent callers.
+	// The single rod page is shared by every method; baseline (goroutine)
+	// + backfill (sync) + live polling can otherwise race on Navigate/WaitLoad.
+	mu sync.Mutex
 }
 
 var _ CFNClient = (*Client)(nil)
 
 func NewClient(browser *browser.Browser) *Client {
-	return &Client{browser}
+	return &Client{browser: browser}
 }
 
 func (c *Client) GetBattleLogPage(ctx context.Context, cfn string, page int) (*BattleLog, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	pageURL := fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/battlelog/rank", url.PathEscape(cfn))
 	if page > 1 {
 		pageURL = fmt.Sprintf("%s?page=%d", pageURL, page)
@@ -69,6 +76,8 @@ func (c *Client) GetBattleLog(ctx context.Context, cfn string) (*BattleLog, erro
 }
 
 func (c *Client) GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	page := c.browser.Page.Context(ctx)
 	err := page.Navigate(fmt.Sprintf("https://www.streetfighter.com/6/buckler/profile/%s/play", url.PathEscape(cfn)))
 	if err != nil {
@@ -99,6 +108,8 @@ func (c *Client) GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, 
 }
 
 func (c *Client) Authenticate(ctx context.Context, email string, password string, statChan chan tracker.AuthStatus) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	status := &tracker.AuthStatus{Progress: 0, Err: nil}
 	if c.browser == nil {
 		statChan <- *status.WithError(fmt.Errorf("browser not initialized"))
