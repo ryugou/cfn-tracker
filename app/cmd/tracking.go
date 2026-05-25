@@ -105,30 +105,35 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 	// aggregates; scoping by character would silently bypass dedup whenever
 	// the user's favorite changed between restarts.
 	//
+	// Dedup BEFORE the HTTP fetch: PollPlayStats hits Capcom's /play endpoint,
+	// which is the most expensive step of StartTracking. When a baseline
+	// already exists within the 30-minute window the snapshot is going to be
+	// dropped anyway, so paying for the round-trip just to discard the result
+	// is pure waste on quick stop/restart cycles.
+	//
 	// We fetch only the single newest snapshot (ORDER BY snapshot_at DESC LIMIT 1)
 	// instead of an entire day's history; the previous full-day scan + Go-side
 	// last-row pick was wasteful for users with many snapshots per day.
 	if sf6Tracker, ok := ch.gameTracker.(*sf6.SF6Tracker); ok {
-		if res, err := sf6Tracker.PollPlayStats(ctx, user.Code); err == nil {
-			latest, latestErr := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, user.Code)
-			if latestErr != nil {
-				slog.Warn("baseline play stats lookup failed", slog.Any("error", latestErr))
+		skip := false
+		latest, latestErr := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, user.Code)
+		if latestErr != nil {
+			slog.Warn("baseline play stats lookup failed", slog.Any("error", latestErr))
+		} else if latest != nil {
+			if parsed, parseErr := time.Parse("2006-01-02 15:04:05", latest.SnapshotAt); parseErr == nil &&
+				time.Since(parsed) < 30*time.Minute {
+				skip = true
 			}
-			shouldSave := true
-			if latest != nil {
-				if parsed, parseErr := time.Parse("2006-01-02 15:04:05", latest.SnapshotAt); parseErr == nil &&
-					time.Since(parsed) < 30*time.Minute {
-					shouldSave = false
-				}
-			}
-			if shouldSave {
+		}
+		if !skip {
+			if res, err := sf6Tracker.PollPlayStats(ctx, user.Code); err == nil {
 				snap := buildSnapshot(user.Code, res, "")
 				if err := ch.sqlDb.SavePlayStats(ctx, snap); err != nil {
 					slog.Warn("save baseline play stats failed", slog.Any("error", err))
 				}
+			} else {
+				slog.Warn("baseline play stats fetch failed", slog.Any("error", err))
 			}
-		} else {
-			slog.Warn("baseline play stats fetch failed", slog.Any("error", err))
 		}
 	}
 

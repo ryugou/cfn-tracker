@@ -111,13 +111,17 @@ SF6 の Buckler プロフィール `/play` ページから取得できる **過�
 
 `content_type` は固定 enum (1..9)。`play_time` は累計秒。
 
-### キャラクタ判定 — 既存 `matches.character` に揃える
+### キャラクタ判定 — snapshot は user-wide、キャラ別は matches 経由で再構築
 
-`fighter_banner_info.favorite_character_name` (例: `"JP"`、表示名) が**現在のお気に入りキャラ**を示し、`battle_stats` はそのキャラの値。
+`/play` の `battle_stats` は Capcom 側で **user 全体集計** (キャラ別 breakdown 無し) として返ってくる。よって `play_stats_snapshots` は character タグを持たない user 全体の値として保存する (legacy としてカラムは残るが query では使わない)。
 
-**既存の `matches.character` も `BattleLog.GetCharacter() = FavoriteCharacterName` を使っており表示名ベース** なので、Phase A では `play_stats_snapshots.character` も **表示名 (`favorite_character_name`)** に揃える。これにより `/sessions` の対戦履歴と `/stats` のキャラフィルタが同じキーで一致する。
+キャラ別の per-match 値は、各 match の前後 snapshot の差分から再構築する:
 
-将来 Phase B で他言語のクライアントに合わせて tool_name (`"jp"` 等) に正規化する余地はあるが、その場合は `matches.character` も同時に移行する別タスクとする。
+- match N の delta = snapshot(after match N) - snapshot(before match N)
+- match N のキャラは `matches.character` で持つ
+- delta を `matches.character` 単位で集計すれば「JP のときの平均 DI 命中」等が出る
+
+実績推移ページのキャラセレクタは詳細表 (matches 一覧) のフィルタとしてのみ機能し、KPI カードとトレンドグラフは user 全体値を表示する。
 
 ## 3. データモデル
 

@@ -121,6 +121,7 @@ type Localization struct {
 	StatsPeriodAllTime       string `json:"statsPeriodAllTime"`
 	StatsCharacter           string `json:"statsCharacter"`
 	StatsAllCharacters       string `json:"statsAllCharacters"`
+	StatsCharScopeNote       string `json:"statsCharScopeNote"`
 	StatsUser                string `json:"statsUser"`
 	StatsPreviousDelta       string `json:"statsPreviousDelta"`
 	StatsTooltip             string `json:"statsTooltip"`

@@ -119,6 +119,7 @@
   "statsPeriodAllTime": "Tout l'historique",
   "statsCharacter": "Personnage",
   "statsAllCharacters": "Tous les personnages",
+  "statsCharScopeNote": "La sélection du personnage n'affecte que le tableau de détails ci-dessous",
   "statsUser": "Utilisateur",
   "statsPreviousDelta": "vs précédent",
   "statsTooltip": "Différence par rapport au précédent instantané (moyenne sur 100 matchs)",

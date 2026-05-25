@@ -185,6 +185,8 @@ export function StatsPage() {
           </select>
         </div>
 
+        <p className='mb-4 text-xs text-white/40'>{t('statsCharScopeNote')}</p>
+
         {loading && <p className='text-white/60'>{t('loading')}</p>}
 
         {error && (

@@ -160,6 +160,7 @@ export namespace model {
 	    statsPeriodAllTime: string;
 	    statsCharacter: string;
 	    statsAllCharacters: string;
+	    statsCharScopeNote: string;
 	    statsUser: string;
 	    statsPreviousDelta: string;
 	    statsTooltip: string;

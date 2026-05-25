@@ -119,6 +119,7 @@
   "statsPeriodAllTime": "全期間",
   "statsCharacter": "キャラクター",
   "statsAllCharacters": "全キャラ",
+  "statsCharScopeNote": "キャラクター選択は下部の詳細表にのみ反映されます",
   "statsUser": "ユーザー",
   "statsPreviousDelta": "前回比",
   "statsTooltip": "100戦平均の前回スナップショットからの差分",
