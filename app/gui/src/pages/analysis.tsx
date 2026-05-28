@@ -179,14 +179,14 @@ export function AnalysisPage() {
   }, [comparison])
   const players = comparison?.players ?? []
 
-  const chartData = metrics.slice(0, 9).map(metric => ({
+  const chartData = metrics.map(metric => ({
     metric: t(metric.labelKey),
     self: numeric(comparison?.self, metric.key),
     rank1: numeric(averages.get(1)?.stats, metric.key),
     rank2: numeric(averages.get(2)?.stats, metric.key)
   }))
 
-  const playerChartData = metrics.slice(0, 6).map(metric => {
+  const playerChartData = metrics.map(metric => {
     const values = players
       ?.filter(p => p.stats)
       .map(p => numeric(p.stats, metric.key))
@@ -269,16 +269,16 @@ export function AnalysisPage() {
               />
             </div>
 
-            <div className='mb-6 h-84'>
+            <div className='mb-6 h-[30rem]'>
               <ResponsiveContainer>
-                <BarChart data={chartData} margin={{ top: 18, right: 20, left: 0, bottom: 78 }}>
+                <BarChart data={chartData} margin={{ top: 18, right: 20, left: 0, bottom: 108 }}>
                   <CartesianGrid stroke='rgba(255,255,255,.08)' />
                   <XAxis
                     dataKey='metric'
                     angle={-28}
                     textAnchor='end'
                     interval={0}
-                    height={76}
+                    height={106}
                     tick={chartTick}
                     tickMargin={8}
                     stroke='rgba(255,255,255,.3)'
@@ -293,16 +293,16 @@ export function AnalysisPage() {
               </ResponsiveContainer>
             </div>
 
-            <div className='mb-6 h-80'>
+            <div className='mb-6 h-[28rem]'>
               <ResponsiveContainer>
-                <BarChart data={playerChartData} margin={{ top: 18, right: 20, left: 0, bottom: 68 }}>
+                <BarChart data={playerChartData} margin={{ top: 18, right: 20, left: 0, bottom: 104 }}>
                   <CartesianGrid stroke='rgba(255,255,255,.08)' />
                   <XAxis
                     dataKey='metric'
                     angle={-25}
                     textAnchor='end'
                     interval={0}
-                    height={68}
+                    height={102}
                     tick={chartTick}
                     tickMargin={8}
                     stroke='rgba(255,255,255,.3)'
