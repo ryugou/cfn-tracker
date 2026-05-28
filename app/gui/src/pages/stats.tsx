@@ -4,7 +4,12 @@ import { useTranslation } from 'react-i18next'
 import * as Page from '@/ui/page'
 import { TrackingMachineContext } from '@/state/tracking-machine'
 import { AuthMachineContext } from '@/state/auth-machine'
-import { GetUsers, GetPlayStatsCharacters, GetPlayStatsHistory } from '@cmd/CommandHandler'
+import {
+  GetMatchesWithPlayStats,
+  GetUsers,
+  GetPlayStatsCharacters,
+  GetPlayStatsHistory
+} from '@cmd/CommandHandler'
 import { model } from '@model'
 import { KpiCard } from './stats/kpi-card'
 import { formatRate, formatPerMatchCount, formatSeconds, formatDelta } from './stats/formatters'
@@ -100,11 +105,32 @@ export function StatsPage() {
       const d = new Date(today.getTime() - days * 86400000)
       from = d.toISOString().slice(0, 10)
     }
-    // Snapshots are user-wide; the character argument is accepted by the
-    // Wails binding for backwards compatibility but ignored by the backend.
-    GetPlayStatsHistory(selectedUser, '', from, '', 0)
+    const loadHistory =
+      selectedChar === ''
+        ? GetPlayStatsHistory(selectedUser, '', from, '', 0)
+        : Promise.all([
+            GetMatchesWithPlayStats(selectedUser, selectedChar, 0, 0),
+            GetPlayStatsHistory(selectedUser, '', from, '', 0)
+          ]).then(([matchRows, allHistory]) => {
+            const matchLinked = (matchRows ?? [])
+              .map(row => row.stats)
+              .filter((stats): stats is model.PlayStatsSnapshot => stats !== undefined && stats !== null)
+              .filter(stats => from === '' || stats.snapshotAt.slice(0, 10) >= from)
+
+            const rows =
+              matchLinked.length > 0
+                ? matchLinked
+                : (allHistory ?? []).filter(stats => stats.character === selectedChar)
+
+            return rows.sort((a, b) => {
+              const byTime = a.snapshotAt.localeCompare(b.snapshotAt)
+              return byTime !== 0 ? byTime : a.id - b.id
+            })
+          })
+
+    loadHistory
       .then(rows => {
-        // Drop late responses for a stale (user, period) tuple so they
+        // Drop late responses for a stale (user, character, period) tuple so they
         // cannot overwrite the current selection's history.
         if (!active) return
         setError(null)
@@ -123,7 +149,7 @@ export function StatsPage() {
       active = false
       setLoading(false)
     }
-  }, [selectedUser, period])
+  }, [selectedUser, selectedChar, period])
 
   // Empty / placeholder states (spec §5)
   if (!users.length && history.length === 0) {
@@ -186,7 +212,7 @@ export function StatsPage() {
           </select>
         </div>
 
-        <p className='mb-4 text-xs text-white/40'>{t('statsCharScopeNote')}</p>
+        {selectedChar === '' && <p className='mb-4 text-xs text-white/40'>{t('statsCharScopeNote')}</p>}
 
         {loading && <p className='text-white/60'>{t('loading')}</p>}
 

@@ -123,10 +123,13 @@ type Localization struct {
 	AnalysisSelf             string `json:"analysisSelf"`
 	AnalysisRank1            string `json:"analysisRank1"`
 	AnalysisRank2            string `json:"analysisRank2"`
+	AnalysisMaster100        string `json:"analysisMaster100"`
+	AnalysisMaster200        string `json:"analysisMaster200"`
 	AnalysisBenchmarkAverage string `json:"analysisBenchmarkAverage"`
 	AnalysisMetric           string `json:"analysisMetric"`
 	AnalysisDeltaRank1       string `json:"analysisDeltaRank1"`
 	AnalysisDeltaRank2       string `json:"analysisDeltaRank2"`
+	AnalysisDeltaTo          string `json:"analysisDeltaTo"`
 	AnalysisGroup            string `json:"analysisGroup"`
 	AnalysisFetchedAt        string `json:"analysisFetchedAt"`
 	StatsPeriod7Days         string `json:"statsPeriod7Days"`

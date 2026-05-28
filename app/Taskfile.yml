@@ -4,6 +4,11 @@ dotenv: [".env"]
 
 tasks:
   dev:
+    desc: Run the dev server with codegen and Go rebuild
+    cmds:
+      - wails dev -forcebuild
+
+  dev-fast:
     desc: Run the dev server without generating bindings, hot reloading, go mod sync
     cmds:
       - wails dev -skipbindings -noreload -nosyncgomod -nogorebuild

@@ -25,6 +25,14 @@ const series: Array<{
   { key: 'gaugeRateSALv3', labelKey: 'kpiSaLv3', color: '#fb923c' }
 ]
 
+const chartTick = { fill: 'rgba(255,255,255,.78)', fontSize: 11 }
+const chartLegend = { color: 'rgba(255,255,255,.86)', fontSize: 12 }
+const chartTooltip = {
+  background: '#1f1f23',
+  border: '1px solid rgba(255,255,255,.18)',
+  color: '#f4f4f5'
+}
+
 export function TrendChart({ history }: Props) {
   const { t } = useTranslation()
 
@@ -42,16 +50,18 @@ export function TrendChart({ history }: Props) {
   }))
 
   return (
-    <div className='mb-6 h-64 w-full'>
+    <div className='mb-6 h-72 w-full'>
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-          <XAxis dataKey='snapshotAt' tick={{ fontSize: 10 }} stroke='#888' />
-          <YAxis tick={{ fontSize: 10 }} stroke='#888' />
-          <Tooltip
-            contentStyle={{ background: '#1f1f23', border: '1px solid #333' }}
-            labelStyle={{ color: '#aaa' }}
+        <LineChart data={data} margin={{ top: 14, right: 20, left: 0, bottom: 24 }}>
+          <XAxis
+            dataKey='snapshotAt'
+            tick={chartTick}
+            tickMargin={8}
+            stroke='rgba(255,255,255,.3)'
           />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <YAxis tick={chartTick} stroke='rgba(255,255,255,.3)' />
+          <Tooltip contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
+          <Legend wrapperStyle={chartLegend} />
           {series.map(s => (
             <Line
               key={s.key}

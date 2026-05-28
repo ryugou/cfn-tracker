@@ -10,20 +10,23 @@ import { Button } from '@/ui/button'
 import { Tooltip } from '@/ui/tooltip'
 import * as Page from '@/ui/page'
 import { type LocalizationKey } from '@/main/i18n'
-import { GetPlayStatsCharacters, GetLatestMatchForUserAndCharacter } from '@cmd/CommandHandler'
+import { GetPlayStatsCharacters, GetLatestMatchForUserAndCharacter, GetUsers } from '@cmd/CommandHandler'
 import type { model } from '@model'
+import { rememberTrackingUser } from './preferences'
 
 export function TrackingLiveUpdater() {
   const { t } = useTranslation()
   const trackingActor = TrackingMachineContext.useActorRef()
 
   const liveMatch = useSelector(trackingActor, ({ context: { match } }) => match)
+  const trackingUser = useSelector(trackingActor, ({ context: { user } }) => user)
   const userCode = useSelector(trackingActor, ({ context: { user } }) => user?.code ?? '')
 
   // Character selector state. Empty string = "not yet chosen"; on first load
   // we auto-select the character from the latest live match so the screen
   // behaves identically to before until the user picks something else.
   const [characters, setCharacters] = React.useState<string[]>([])
+  const [users, setUsers] = React.useState<model.User[]>([])
   const [selectedChar, setSelectedChar] = React.useState<string>('')
   // The match actually rendered. We keep this as standalone state (rather
   // than deriving it on every render) so that live events for *non*-selected
@@ -32,6 +35,20 @@ export function TrackingLiveUpdater() {
   // the wrong-character live match.
   const [displayMatch, setDisplayMatch] = React.useState<model.Match>(liveMatch)
   const userInteracted = React.useRef(false)
+
+  React.useEffect(() => {
+    let active = true
+    GetUsers()
+      .then(us => {
+        if (active) setUsers(us ?? [])
+      })
+      .catch(() => {
+        /* account switcher is best-effort */
+      })
+    return () => {
+      active = false
+    }
+  }, [userCode])
 
   // Pull the distinct characters the user has played from the matches table.
   // Re-fetch when a live match arrives so a freshly-played character shows up
@@ -123,13 +140,41 @@ export function TrackingLiveUpdater() {
     victory
   } = displayMatch
 
+  const accountOptions = React.useMemo(() => {
+    if (!trackingUser || users.some(user => user.code === trackingUser.code)) return users
+    return [trackingUser, ...users]
+  }, [trackingUser, users])
+
   const [refreshDisabled, setRefreshDisabled] = React.useState(false)
 
   return (
     <Page.Root>
       <Page.Header>
         <Page.Title>{t('tracking')}</Page.Title>
-        <Page.LoadingIcon />
+        <div className='flex items-center gap-3'>
+          {accountOptions.length > 1 && (
+            <label className='flex items-center gap-2 text-sm text-white/70'>
+              <span>{t('user')}</span>
+              <select
+                value={userCode}
+                onChange={e => {
+                  const nextUser = accountOptions.find(user => user.code === e.target.value)
+                  if (!nextUser || nextUser.code === userCode) return
+                  rememberTrackingUser(nextUser.code)
+                  trackingActor.send({ type: 'switchUser', user: nextUser })
+                }}
+                className='min-w-[150px] rounded bg-zinc-800 px-2 py-1.5 text-sm text-white'
+              >
+                {accountOptions.map(user => (
+                  <option key={user.code} value={user.code}>
+                    {user.displayName || user.code}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <Page.LoadingIcon />
+        </div>
       </Page.Header>
       <motion.section
         initial={{ opacity: 0 }}
@@ -138,7 +183,7 @@ export function TrackingLiveUpdater() {
         className='h-full px-6 pt-4'
       >
         <dl className='flex w-full items-center justify-between whitespace-nowrap'>
-          <SmallStat text='CFN' value={userName} />
+          <SmallStat text='CFN' value={userName || trackingUser?.displayName || userCode} />
           <div className='flex justify-between gap-8'>
             {lp != 0 && <SmallStat text='LP' value={`${lp == -1 ? t('placement') : lp}`} />}
             {mr != 0 && <SmallStat text='MR' value={`${mr == -1 ? t('placement') : mr}`} />}

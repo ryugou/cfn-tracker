@@ -87,6 +87,9 @@ func (ch *CommandHandler) GetBenchmarkComparison(userId, character string) (*mod
 	if err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
 	}
+	if players == nil {
+		players = []*model.BenchmarkPlayer{}
+	}
 	self, err := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, userId)
 	if err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
@@ -121,20 +124,21 @@ func (ch *CommandHandler) findBenchmarkCandidates(
 				filtered = append(filtered, candidate)
 			}
 		}
-		sort.Slice(filtered, func(i, j int) bool {
-			return filtered[i].FavoriteCharacterLeagueInfo.MasterRating <
-				filtered[j].FavoriteCharacterLeagueInfo.MasterRating
-		})
+		used := map[string]bool{selfId: true}
 		return map[int][]cfn.FighterBanner{
-			1: takeFighters(filtered, 0, benchmarkPlayersPerRank),
-			2: takeFighters(filtered, benchmarkPlayersPerRank, benchmarkPlayersPerRank),
+			1: selectClosestMR(filtered, selfMR+100, used),
+			2: selectClosestMR(filtered, selfMR+200, used),
 		}, nil
 	}
 
 	out := map[int][]cfn.FighterBanner{}
 	used := map[string]bool{selfId: true}
+	targetRanks := map[int]int{
+		1: selfRank + 2,
+		2: nextLeagueRank(selfRank),
+	}
 	for _, offset := range []int{1, 2} {
-		targetRank := selfRank + offset
+		targetRank := targetRanks[offset]
 		if targetRank > 36 {
 			targetRank = 36
 		}
@@ -163,6 +167,54 @@ func (ch *CommandHandler) findBenchmarkCandidates(
 		out[offset] = selected
 	}
 	return out, nil
+}
+
+func nextLeagueRank(rank int) int {
+	if rank >= 36 {
+		return 36
+	}
+	if rank <= 0 {
+		return 1
+	}
+	next := ((rank-1)/5+1)*5 + 1
+	if next > 36 {
+		return 36
+	}
+	return next
+}
+
+func selectClosestMR(candidates []cfn.FighterBanner, targetMR int, used map[string]bool) []cfn.FighterBanner {
+	sort.Slice(candidates, func(i, j int) bool {
+		mi := candidates[i].FavoriteCharacterLeagueInfo.MasterRating
+		mj := candidates[j].FavoriteCharacterLeagueInfo.MasterRating
+		di := absInt(mi - targetMR)
+		dj := absInt(mj - targetMR)
+		if di == dj {
+			return mi > mj
+		}
+		return di < dj
+	})
+
+	selected := make([]cfn.FighterBanner, 0, benchmarkPlayersPerRank)
+	for _, candidate := range candidates {
+		id := strconv.FormatInt(candidate.PersonalInfo.ShortID, 10)
+		if used[id] {
+			continue
+		}
+		selected = append(selected, candidate)
+		used[id] = true
+		if len(selected) >= benchmarkPlayersPerRank {
+			break
+		}
+	}
+	return selected
+}
+
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 func (ch *CommandHandler) searchBenchmarkRank(ctx context.Context, characterToolName string, rank int) ([]cfn.FighterBanner, error) {
@@ -253,17 +305,6 @@ func averagePlayStats(rows []*model.PlayStatsSnapshot) *model.PlayStatsSnapshot 
 		}
 	}
 	return avg
-}
-
-func takeFighters(in []cfn.FighterBanner, start, count int) []cfn.FighterBanner {
-	if start >= len(in) {
-		return []cfn.FighterBanner{}
-	}
-	end := start + count
-	if end > len(in) {
-		end = len(in)
-	}
-	return in[start:end]
 }
 
 func characterToolName(character string) string {

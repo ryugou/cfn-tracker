@@ -1,18 +1,18 @@
 export function formatRate(value: number | null | undefined): string {
   if (value == null) return '—'
-  return `${(value * 100).toFixed(1)}%`
+  return `${(value * 100).toFixed(2)}%`
 }
 
 export function formatPerMatchCount(value: number | null | undefined): string {
   if (value == null) return '—'
-  return value.toFixed(1)
+  return value.toFixed(2)
 }
 
 export function formatSeconds(value: number | null | undefined): string {
   if (value == null) return '—'
-  if (value < 60) return `${value}s`
+  if (value < 60) return `${value.toFixed(2)}s`
   const m = Math.floor(value / 60)
-  const s = value % 60
+  const s = Math.round(value % 60)
   if (m < 60) return `${m}m ${s}s`
   const h = Math.floor(m / 60)
   return `${h}h ${m % 60}m`
