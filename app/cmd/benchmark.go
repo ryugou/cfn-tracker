@@ -87,6 +87,9 @@ func (ch *CommandHandler) GetBenchmarkComparison(userId, character string) (*mod
 	if err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
 	}
+	if players == nil {
+		players = []*model.BenchmarkPlayer{}
+	}
 	self, err := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, userId)
 	if err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)

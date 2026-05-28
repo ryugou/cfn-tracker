@@ -54,6 +54,14 @@ function numeric(stats: model.PlayStatsSnapshot | undefined, key: keyof model.Pl
   return typeof value === 'number' ? value : undefined
 }
 
+function normalizeComparison(data: model.BenchmarkComparison | null | undefined): model.BenchmarkComparison {
+  return {
+    self: data?.self,
+    players: data?.players ?? [],
+    rankAverages: data?.rankAverages ?? []
+  }
+}
+
 function deltaClass(metric: Metric, value: number | undefined) {
   if (value == null || Math.abs(value) < 1e-6) return 'text-white/45'
   const good = metric.higherIsBetter ? value > 0 : value < 0
@@ -130,7 +138,7 @@ export function AnalysisPage() {
       .then(data => {
         if (!active) return
         setError(null)
-        setComparison(data)
+        setComparison(normalizeComparison(data))
       })
       .catch(e => {
         if (active) setError(String(e))
@@ -150,7 +158,7 @@ export function AnalysisPage() {
       .then(() => GetBenchmarkComparison(selectedUser, selectedChar))
       .then(data => {
         setError(null)
-        setComparison(data)
+        setComparison(normalizeComparison(data))
       })
       .catch(e => setError(String(e)))
       .finally(() => setRefreshing(false))
@@ -161,6 +169,7 @@ export function AnalysisPage() {
     comparison?.rankAverages?.forEach(avg => out.set(avg.rankOffset, avg))
     return out
   }, [comparison])
+  const players = comparison?.players ?? []
 
   const chartData = metrics.slice(0, 9).map(metric => ({
     metric: t(metric.labelKey),
@@ -170,7 +179,7 @@ export function AnalysisPage() {
   }))
 
   const playerChartData = metrics.slice(0, 6).map(metric => {
-    const values = comparison?.players
+    const values = players
       ?.filter(p => p.stats)
       .map(p => numeric(p.stats, metric.key))
       .filter((value): value is number => value !== undefined)
@@ -234,21 +243,21 @@ export function AnalysisPage() {
           </p>
         )}
 
-        {selectedChar && !loading && (!comparison?.players || comparison.players.length === 0) && (
+        {selectedChar && !loading && players.length === 0 && (
           <p className='mt-12 text-center text-white/60'>{t('analysisEmpty')}</p>
         )}
 
-        {comparison && comparison.players.length > 0 && (
+        {comparison && players.length > 0 && (
           <>
             <div className='mb-4 grid grid-cols-3 gap-3'>
               <Summary label={t('analysisSelf')} value={comparison.self?.snapshotAt ?? '—'} />
               <Summary
                 label={t('analysisRank1')}
-                value={`${averages.get(1)?.count ?? 0} / ${comparison.players.filter(p => p.rankOffset === 1).length}`}
+                value={`${averages.get(1)?.count ?? 0} / ${players.filter(p => p.rankOffset === 1).length}`}
               />
               <Summary
                 label={t('analysisRank2')}
-                value={`${averages.get(2)?.count ?? 0} / ${comparison.players.filter(p => p.rankOffset === 2).length}`}
+                value={`${averages.get(2)?.count ?? 0} / ${players.filter(p => p.rankOffset === 2).length}`}
               />
             </div>
 
@@ -282,7 +291,7 @@ export function AnalysisPage() {
             </div>
 
             <ComparisonTable self={comparison.self} rank1={averages.get(1)?.stats} rank2={averages.get(2)?.stats} />
-            <PlayersTable players={comparison.players} />
+            <PlayersTable players={players} />
           </>
         )}
       </div>

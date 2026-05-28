@@ -63,7 +63,7 @@ func (s *Storage) GetBenchmarkPlayers(
 	ctx context.Context,
 	sourceUserId, character string,
 ) ([]*model.BenchmarkPlayer, error) {
-	var rows []*model.BenchmarkPlayer
+	rows := []*model.BenchmarkPlayer{}
 	if err := s.db.SelectContext(ctx, &rows, `
 		SELECT * FROM benchmark_players
 		WHERE source_user_id = ? AND character = ?
