@@ -23,12 +23,11 @@ const DELTA_SCALE = 100
 
 function formatDelta(value: number | undefined): string {
   if (value === undefined) return '—'
-  // Round to one decimal: with DELTA_SCALE=100 most fields land on
-  // whole numbers, but some (cornerTime, justParry on tiny windows)
-  // benefit from the extra precision.
+  // Round to two decimals so table values stay readable without exposing
+  // long floating point tails from derived snapshot deltas.
   const scaled = value * DELTA_SCALE
-  if (Math.abs(scaled) < 0.05) return '0'
-  return scaled.toFixed(1)
+  if (Math.abs(scaled) < 0.005) return '0.00'
+  return scaled.toFixed(2)
 }
 
 function deltaField(curr: Snapshot, prev: Snapshot | undefined, pick: (s: Snapshot) => number) {
