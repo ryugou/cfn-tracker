@@ -108,16 +108,25 @@ export function StatsPage() {
     const loadHistory =
       selectedChar === ''
         ? GetPlayStatsHistory(selectedUser, '', from, '', 0)
-        : GetMatchesWithPlayStats(selectedUser, selectedChar, 0, 0).then(rows =>
-            (rows ?? [])
+        : Promise.all([
+            GetMatchesWithPlayStats(selectedUser, selectedChar, 0, 0),
+            GetPlayStatsHistory(selectedUser, '', from, '', 0)
+          ]).then(([matchRows, allHistory]) => {
+            const matchLinked = (matchRows ?? [])
               .map(row => row.stats)
               .filter((stats): stats is model.PlayStatsSnapshot => stats !== undefined && stats !== null)
               .filter(stats => from === '' || stats.snapshotAt.slice(0, 10) >= from)
-              .sort((a, b) => {
-                const byTime = a.snapshotAt.localeCompare(b.snapshotAt)
-                return byTime !== 0 ? byTime : a.id - b.id
-              })
-          )
+
+            const rows =
+              matchLinked.length > 0
+                ? matchLinked
+                : (allHistory ?? []).filter(stats => stats.character === selectedChar)
+
+            return rows.sort((a, b) => {
+              const byTime = a.snapshotAt.localeCompare(b.snapshotAt)
+              return byTime !== 0 ? byTime : a.id - b.id
+            })
+          })
 
     loadHistory
       .then(rows => {

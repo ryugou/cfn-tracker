@@ -74,6 +74,14 @@ function signed(value: number | undefined, format: Metric['format']) {
   return `${prefix}${format(value)}`
 }
 
+const chartTick = { fill: 'rgba(255,255,255,.72)', fontSize: 10 }
+const chartLegend = { color: 'rgba(255,255,255,.82)', fontSize: 11 }
+const chartTooltip = {
+  background: '#1f1f23',
+  border: '1px solid rgba(255,255,255,.18)',
+  color: '#f4f4f5'
+}
+
 export function AnalysisPage() {
   const { t } = useTranslation()
   const trackingUser = TrackingMachineContext.useSelector(s => s.context.user)
@@ -261,14 +269,23 @@ export function AnalysisPage() {
               />
             </div>
 
-            <div className='mb-6 h-72'>
+            <div className='mb-6 h-84'>
               <ResponsiveContainer>
-                <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 45 }}>
+                <BarChart data={chartData} margin={{ top: 18, right: 20, left: 0, bottom: 78 }}>
                   <CartesianGrid stroke='rgba(255,255,255,.08)' />
-                  <XAxis dataKey='metric' angle={-25} textAnchor='end' interval={0} tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#1f1f23', border: '1px solid #333' }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <XAxis
+                    dataKey='metric'
+                    angle={-28}
+                    textAnchor='end'
+                    interval={0}
+                    height={76}
+                    tick={chartTick}
+                    tickMargin={8}
+                    stroke='rgba(255,255,255,.3)'
+                  />
+                  <YAxis tick={chartTick} stroke='rgba(255,255,255,.3)' />
+                  <Tooltip contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
+                  <Legend verticalAlign='top' align='center' wrapperStyle={chartLegend} />
                   <Bar dataKey='self' name={t('analysisSelf')} fill='#60a5fa' />
                   <Bar dataKey='rank1' name={t('analysisRank1')} fill='#34d399' />
                   <Bar dataKey='rank2' name={t('analysisRank2')} fill='#fbbf24' />
@@ -276,14 +293,23 @@ export function AnalysisPage() {
               </ResponsiveContainer>
             </div>
 
-            <div className='mb-6 h-64'>
+            <div className='mb-6 h-80'>
               <ResponsiveContainer>
-                <BarChart data={playerChartData} margin={{ top: 10, right: 20, left: 0, bottom: 35 }}>
+                <BarChart data={playerChartData} margin={{ top: 18, right: 20, left: 0, bottom: 68 }}>
                   <CartesianGrid stroke='rgba(255,255,255,.08)' />
-                  <XAxis dataKey='metric' angle={-20} textAnchor='end' interval={0} tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ background: '#1f1f23', border: '1px solid #333' }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <XAxis
+                    dataKey='metric'
+                    angle={-25}
+                    textAnchor='end'
+                    interval={0}
+                    height={68}
+                    tick={chartTick}
+                    tickMargin={8}
+                    stroke='rgba(255,255,255,.3)'
+                  />
+                  <YAxis tick={chartTick} stroke='rgba(255,255,255,.3)' />
+                  <Tooltip contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
+                  <Legend verticalAlign='top' align='center' wrapperStyle={chartLegend} />
                   <Bar dataKey='self' name={t('analysisSelf')} fill='#60a5fa' />
                   <Bar dataKey='field' name={t('analysisBenchmarkAverage')} fill='#a78bfa' />
                 </BarChart>
