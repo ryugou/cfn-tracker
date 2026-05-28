@@ -4,7 +4,6 @@ import { motion } from 'framer-motion'
 
 import { model } from '@model'
 
-import { Button } from '@/ui/button'
 import * as Page from '@/ui/page'
 import { cn } from '@/helpers/cn'
 
@@ -33,7 +32,6 @@ const GAMES = [
 
 export function TrackingGamePicker(props: { onSubmit: (game: model.GameType) => void }) {
   const { t } = useTranslation()
-  const [selectedGame, setSelectedGame] = React.useState<model.GameType>()
 
   return (
     <Page.Root>
@@ -55,13 +53,7 @@ export function TrackingGamePicker(props: { onSubmit: (game: model.GameType) => 
                   'relative h-[70px] w-60 rounded-2xl px-3',
                   'transition-colors hover:bg-slate-50/5'
                 )}
-                {...(game.code === selectedGame && {
-                  style: {
-                    outline: '1px solid lightblue',
-                    background: 'rgb(248 250 252 / 0.05)'
-                  }
-                })}
-                onClick={() => setSelectedGame(game.code)}
+                onClick={() => props.onSubmit(game.code)}
               >
                 <img
                   src={game.logo}
@@ -73,14 +65,6 @@ export function TrackingGamePicker(props: { onSubmit: (game: model.GameType) => 
             </li>
           ))}
         </motion.ul>
-        <Button
-          onClick={() => {
-            selectedGame && props.onSubmit(selectedGame)
-          }}
-          disabled={!selectedGame}
-        >
-          {t('continueStep')}
-        </Button>
       </div>
     </Page.Root>
   )

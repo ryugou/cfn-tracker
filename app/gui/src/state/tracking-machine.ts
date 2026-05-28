@@ -94,6 +94,22 @@ export const TRACKING_MACHINE = setup({
         forcePoll: {
           actions: ['forcePoll']
         },
+        switchUser: {
+          actions: [
+            'stopTracking',
+            'unsubscribeToTrackingEvents',
+            assign({
+              user: ({ event }) => event.user,
+              restore: true,
+              isTracking: true,
+              match: <model.Match>{},
+              error: null
+            }),
+            'startTracking',
+            'subscribeToTrackingEvents'
+          ],
+          target: 'loading'
+        },
         cease: {
           actions: [
             'stopTracking',

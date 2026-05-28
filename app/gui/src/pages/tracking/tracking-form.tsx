@@ -13,6 +13,7 @@ import * as Page from '@/ui/page'
 import { model } from '@model'
 import { AuthMachineContext } from '@/state/auth-machine'
 import { useSelector } from '@xstate/react'
+import { rememberTrackingUser } from './preferences'
 
 export function TrackingForm() {
   const { t } = useTranslation()
@@ -28,10 +29,12 @@ export function TrackingForm() {
   const onSubmit: React.FormEventHandler<HTMLFormElement> = e => {
     e.preventDefault()
     if (playerIdInput == '') return
+    rememberTrackingUser(playerIdInput)
+    const oldUser = users.find(old => old.code == playerIdInput)
     trackingActor.send({
       type: 'submit',
       user: {
-        displayName: users.find(old => old.code == playerIdInput) ?? playerIdInput,
+        displayName: oldUser?.displayName ?? playerIdInput,
         code: playerIdInput
       },
       restore: restoreRef.current && restoreRef.current.checked
