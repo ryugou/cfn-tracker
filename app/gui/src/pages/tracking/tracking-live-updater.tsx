@@ -180,7 +180,7 @@ export function TrackingLiveUpdater() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.125 }}
-        className='h-full px-6 pt-4'
+        className='flex h-full min-h-0 flex-col overflow-hidden px-6 pt-4 pb-5'
       >
         <dl className='flex w-full items-center justify-between whitespace-nowrap'>
           <SmallStat text='CFN' value={userName || trackingUser?.displayName || userCode} />
@@ -211,7 +211,7 @@ export function TrackingLiveUpdater() {
             </select>
           </div>
         )}
-        <div className='flex h-[calc(100%-32px)] flex-1 pt-3 pb-5'>
+        <div className='flex min-h-0 flex-1 pt-3'>
           <div className='w-full'>
             <dl className='text-lg whitespace-nowrap'>
               <div className='flex justify-between gap-2'>
@@ -249,10 +249,10 @@ export function TrackingLiveUpdater() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.35 }}
-            className='relative grid h-full flex-0'
+            className='relative flex min-h-0 w-[220px] shrink-0 flex-col justify-between'
           >
             <PieChart
-              className='mx-auto h-52 w-full'
+              className='mx-auto h-48 w-full'
               animate
               animationDuration={2000}
               lineWidth={85}
