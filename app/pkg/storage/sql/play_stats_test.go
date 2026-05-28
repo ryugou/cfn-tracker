@@ -359,6 +359,50 @@ func TestGetLatestMatchForUser(t *testing.T) {
 	}
 }
 
+func TestSaveAndGetBenchmarkPlayers(t *testing.T) {
+	ctx := context.Background()
+	stats := sampleSnapshot("bench-target", "JP", "")
+	players := []*model.BenchmarkPlayer{
+		{
+			SourceUserId:      "bench-source",
+			TargetUserId:      "bench-target",
+			FighterId:         "Benchmark",
+			Character:         "JP",
+			CharacterToolName: "jp",
+			RankOffset:        1,
+			LeagueRank:        36,
+			LP:                30000,
+			MR:                1600,
+			MRRanking:         1000,
+			LastPlayAt:        1779859033,
+			Stats:             &stats,
+		},
+	}
+
+	if err := store.SaveBenchmarkPlayers(ctx, "bench-source", "JP", players); err != nil {
+		t.Fatalf("SaveBenchmarkPlayers: %v", err)
+	}
+	got, err := store.GetBenchmarkPlayers(ctx, "bench-source", "JP")
+	if err != nil {
+		t.Fatalf("GetBenchmarkPlayers: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("benchmark rows = %d, want 1", len(got))
+	}
+	if got[0].TargetUserId != "bench-target" {
+		t.Errorf("TargetUserId = %q, want bench-target", got[0].TargetUserId)
+	}
+	if got[0].Stats == nil {
+		t.Fatal("Stats should be unmarshaled")
+	}
+	if got[0].Stats.DriveImpact != stats.DriveImpact {
+		t.Errorf("DriveImpact = %v, want %v", got[0].Stats.DriveImpact, stats.DriveImpact)
+	}
+	if got[0].FetchedAt == "" {
+		t.Errorf("FetchedAt should be populated")
+	}
+}
+
 func TestGetLatestMatchForUserAndCharacter(t *testing.T) {
 	ctx := context.Background()
 

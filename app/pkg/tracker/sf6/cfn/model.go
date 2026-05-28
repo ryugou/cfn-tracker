@@ -248,8 +248,16 @@ func (bl *BattleLog) GetMR() int {
 	return bl.FighterBannerInfo.FavoriteCharacterLeagueInfo.MasterRating
 }
 
+func (bl *BattleLog) GetLeagueRank() int {
+	return bl.FighterBannerInfo.FavoriteCharacterLeagueInfo.LeagueRank
+}
+
 func (bl *BattleLog) GetCharacter() string {
 	return bl.FighterBannerInfo.FavoriteCharacterName
+}
+
+func (bl *BattleLog) GetCharacterToolName() string {
+	return bl.FighterBannerInfo.FavoriteCharacterToolName
 }
 
 func (bl *BattleLog) GetCFN() string {
@@ -273,6 +281,47 @@ type Replay struct {
 	ReplayBattleTypeName    string     `json:"replay_battle_type_name"`
 	ReplayBattleSubTypeName string     `json:"replay_battle_sub_type_name"`
 }
+
+type FighterSearchParams struct {
+	CharacterToolName string
+	LeagueRankMin     int
+	LeagueRankMax     int
+	Page              int
+}
+
+type FighterSearchDoc struct {
+	Props struct {
+		PageProps FighterSearchPageProps `json:"pageProps"`
+	} `json:"props"`
+}
+
+type FighterSearchPageProps struct {
+	Common            CommonProps     `json:"common"`
+	FighterBannerList []FighterBanner `json:"fighter_banner_list"`
+	Page              int             `json:"page"`
+}
+
+type FighterBanner struct {
+	FavoriteCharacterID         int    `json:"favorite_character_id"`
+	FavoriteCharacterName       string `json:"favorite_character_name"`
+	FavoriteCharacterToolName   string `json:"favorite_character_tool_name"`
+	FavoriteCharacterLeagueInfo struct {
+		LeaguePoint         int `json:"league_point"`
+		LeagueRank          int `json:"league_rank"`
+		MasterLeague        int `json:"master_league"`
+		MasterRating        int `json:"master_rating"`
+		MasterRatingRanking int `json:"master_rating_ranking"`
+	} `json:"favorite_character_league_info"`
+	PersonalInfo struct {
+		FighterID        string `json:"fighter_id"`
+		PlatformID       int    `json:"platform_id"`
+		PlatformName     string `json:"platform_name"`
+		PlatformToolName string `json:"platform_tool_name"`
+		ShortID          int64  `json:"short_id"`
+	} `json:"personal_info"`
+	LastPlayAt int64 `json:"last_play_at"`
+}
+
 type SearchResult struct {
 	AssetPrefix   string   `json:"assetPrefix"`
 	BuildID       string   `json:"buildId"`

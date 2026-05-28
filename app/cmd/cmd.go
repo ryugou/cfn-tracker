@@ -15,20 +15,23 @@ import (
 	cfgDb "github.com/williamsjokvist/cfn-tracker/pkg/storage/config"
 	"github.com/williamsjokvist/cfn-tracker/pkg/storage/sql"
 	"github.com/williamsjokvist/cfn-tracker/pkg/storage/txt"
+	"github.com/williamsjokvist/cfn-tracker/pkg/tracker/sf6/cfn"
 )
 
 // The CommandHandler is the interface between the GUI and the core
 type CommandHandler struct {
-	sqlDb *sql.Storage
-	cfgDb *cfgDb.Storage
-	cfg   *config.BuildConfig
+	sqlDb     *sql.Storage
+	cfgDb     *cfgDb.Storage
+	cfnClient cfn.CFNClient
+	cfg       *config.BuildConfig
 }
 
-func NewCommandHandler(sqlDb *sql.Storage, cfgDb *cfgDb.Storage, txtDb *txt.Storage, cfg *config.BuildConfig) *CommandHandler {
+func NewCommandHandler(sqlDb *sql.Storage, cfgDb *cfgDb.Storage, txtDb *txt.Storage, cfnClient cfn.CFNClient, cfg *config.BuildConfig) *CommandHandler {
 	return &CommandHandler{
-		sqlDb: sqlDb,
-		cfgDb: cfgDb,
-		cfg:   cfg,
+		sqlDb:     sqlDb,
+		cfgDb:     cfgDb,
+		cfnClient: cfnClient,
+		cfg:       cfg,
 	}
 }
 

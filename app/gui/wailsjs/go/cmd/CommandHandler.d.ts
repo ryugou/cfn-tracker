@@ -4,6 +4,10 @@ import {model} from '../models';
 
 export function GetAppVersion():Promise<string>;
 
+export function GetBenchmarkComparison(arg1:string,arg2:string):Promise<model.BenchmarkComparison>;
+
+export function GetBenchmarkPlayers(arg1:string,arg2:string):Promise<Array<model.BenchmarkPlayer>>;
+
 export function GetFGCTrackerErrorModelUnused():Promise<model.FGCTrackerError>;
 
 export function GetGuiConfig():Promise<model.GUIConfig>;
@@ -31,6 +35,8 @@ export function GetTranslation(arg1:string):Promise<model.Localization>;
 export function GetUsers():Promise<Array<model.User>>;
 
 export function OpenResultsDirectory():Promise<void>;
+
+export function RefreshBenchmarkPlayers(arg1:string,arg2:string):Promise<Array<model.BenchmarkPlayer>>;
 
 export function SaveLocale(arg1:string):Promise<void>;
 

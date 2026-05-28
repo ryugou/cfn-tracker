@@ -21,6 +21,7 @@ type CFNClient interface {
 	GetBattleLog(ctx context.Context, cfn string) (*BattleLog, error)
 	GetBattleLogPage(ctx context.Context, cfn string, page int) (*BattleLog, error)
 	GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, error)
+	SearchFighters(ctx context.Context, params FighterSearchParams) (*FighterSearchPageProps, error)
 	Authenticate(ctx context.Context, email string, password string, statChan chan tracker.AuthStatus)
 }
 
@@ -103,6 +104,51 @@ func (c *Client) GetPlayStats(ctx context.Context, cfn string) (*PlayPageProps, 
 	pp := &doc.Props.PageProps
 	if pp.Common.StatusCode != 200 {
 		return nil, fmt.Errorf("fetch play page, received status code %v", pp.Common.StatusCode)
+	}
+	return pp, nil
+}
+
+func (c *Client) SearchFighters(ctx context.Context, params FighterSearchParams) (*FighterSearchPageProps, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if params.Page <= 0 {
+		params.Page = 1
+	}
+	character := params.CharacterToolName
+	if character == "" {
+		character = "all"
+	}
+	pageURL := fmt.Sprintf(
+		"https://www.streetfighter.com/6/buckler/ja-jp/fighterslist/search/result?character_id=%s&ability=0&tag=0&tag_option_char=-&tag_option_title=0&tag_option_proficiency=0&tag_option_time_zone=0&tag_option_blank=0&tag_option_input_type=0&home_category_id=0&home_id=0&home_type_filter_id=1&last_play=4&league_rank_max=%d&league_rank_min=%d&play_time_zone=0&cross_platform=1&page=%d",
+		url.QueryEscape(character),
+		params.LeagueRankMax,
+		params.LeagueRankMin,
+		params.Page,
+	)
+	p := c.browser.Page.Context(ctx)
+	if err := p.Navigate(pageURL); err != nil {
+		return nil, fmt.Errorf("navigate to fighterslist search: %w", err)
+	}
+	if err := p.WaitLoad(); err != nil {
+		return nil, fmt.Errorf("wait for fighterslist search to load: %w", err)
+	}
+	nextData, err := p.Element("#__NEXT_DATA__")
+	if err != nil {
+		return nil, fmt.Errorf("get __NEXT_DATA__ element: %w", err)
+	}
+	body, err := nextData.Text()
+	if err != nil {
+		return nil, fmt.Errorf("read __NEXT_DATA__ json: %w", err)
+	}
+
+	var doc FighterSearchDoc
+	if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		return nil, fmt.Errorf("unmarshal fighterslist search: %w", err)
+	}
+	pp := &doc.Props.PageProps
+	if pp.Common.StatusCode != 200 {
+		return nil, fmt.Errorf("fighterslist search, received status code %v", pp.Common.StatusCode)
 	}
 	return pp, nil
 }

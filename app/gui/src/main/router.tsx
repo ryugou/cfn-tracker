@@ -5,6 +5,7 @@ import { OutputPage } from '@/pages/output'
 import { MatchesListPage } from '@/pages/matches'
 import { SessionsListPage } from '@/pages/sessions'
 import { StatsPage } from '@/pages/stats'
+import { AnalysisPage } from '@/pages/analysis'
 import { TrackingPage } from '@/pages/tracking'
 
 import { AppWrapper } from './app-wrapper'
@@ -55,6 +56,10 @@ const router = createHashRouter([
           {
             element: <StatsPage />,
             path: '/stats'
+          },
+          {
+            element: <AnalysisPage />,
+            path: '/analysis'
           }
         ]
       }

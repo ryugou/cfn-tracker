@@ -10,13 +10,14 @@ import { KpiCard } from './stats/kpi-card'
 import { formatRate, formatPerMatchCount, formatSeconds, formatDelta } from './stats/formatters'
 import { TrendChart } from './stats/trend-chart'
 import { DetailTable } from './stats/detail-table'
+import type { LocalizationKey } from '@/main/i18n'
 
 type Period = '7' | '30' | 'all'
 
 type Snapshot = model.PlayStatsSnapshot
 
 const kpiSpecs: Array<{
-  key: string
+  key: LocalizationKey
   value: (s: Snapshot) => number
   format: (n: number) => string
 }> = [

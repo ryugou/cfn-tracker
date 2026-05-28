@@ -30,6 +30,94 @@ export namespace model {
 	    ENTH = "enth",
 	    TEKKEN = "tekken",
 	}
+	export interface BenchmarkRankAverage {
+	    rankOffset: number;
+	    count: number;
+	    stats?: PlayStatsSnapshot;
+	}
+	export interface BenchmarkPlayer {
+	    id: number;
+	    sourceUserId: string;
+	    targetUserId: string;
+	    fighterId: string;
+	    character: string;
+	    characterToolName: string;
+	    rankOffset: number;
+	    leagueRank: number;
+	    lp: number;
+	    mr: number;
+	    mrRanking: number;
+	    lastPlayAt: number;
+	    fetchedAt: string;
+	    stats?: PlayStatsSnapshot;
+	    lastError: string;
+	    createdAt: string;
+	    updatedAt: string;
+	}
+	export interface PlayStatsSnapshot {
+	    id: number;
+	    userId: string;
+	    character: string;
+	    matchReplayId: sql.NullString;
+	    snapshotAt: string;
+	    battleHubMatchPlayCount: number;
+	    casualMatchPlayCount: number;
+	    cornerTime: number;
+	    corneredTime: number;
+	    customRoomMatchPlayCount: number;
+	    driveImpact: number;
+	    driveImpactToDriveImpact: number;
+	    driveParry: number;
+	    driveReversal: number;
+	    gaugeRateCA: number;
+	    gaugeRateDriveArts: number;
+	    gaugeRateDriveGuard: number;
+	    gaugeRateDriveImpact: number;
+	    gaugeRateDriveOther: number;
+	    gaugeRateDriveReversal: number;
+	    gaugeRateDriveRushFromCancel: number;
+	    gaugeRateDriveRushFromParry: number;
+	    gaugeRateSALv1: number;
+	    gaugeRateSALv2: number;
+	    gaugeRateSALv3: number;
+	    justParry: number;
+	    punishCounter: number;
+	    rankMatchPlayCount: number;
+	    receivedDriveImpact: number;
+	    receivedDriveImpactToDriveImpact: number;
+	    receivedPunishCounter: number;
+	    receivedStun: number;
+	    receivedThrowCount: number;
+	    receivedThrowDriveParry: number;
+	    rivalAIAchievedChallengeCount: number;
+	    rivalAIHighestLeagueRank: number;
+	    rivalAIHighestLeagueRankTxt: string;
+	    stun: number;
+	    targetClearCount: number;
+	    throwCount: number;
+	    throwDriveParry: number;
+	    throwTech: number;
+	    totalAllCharacterPlayPoint: number;
+	    enjoyFightPoint: number;
+	    enjoyTotalPoint: number;
+	    enjoyUserPoint: number;
+	    worldTourSeconds: number;
+	    rankedMatchSeconds: number;
+	    casualMatchSeconds: number;
+	    customRoomSeconds: number;
+	    battleHubSeconds: number;
+	    offlineMatchSeconds: number;
+	    arcadeSeconds: number;
+	    practiceSeconds: number;
+	    extremeSeconds: number;
+	}
+	export interface BenchmarkComparison {
+	    self?: PlayStatsSnapshot;
+	    players: BenchmarkPlayer[];
+	    rankAverages: BenchmarkRankAverage[];
+	}
+	
+	
 	export interface FGCTrackerError {
 	    localizationKey: ErrorLocalizationKey;
 	    message: string;
@@ -155,6 +243,19 @@ export namespace model {
 	    errReadThemeCSS: string;
 	    statsNav: string;
 	    statsTitle: string;
+	    analysisNav: string;
+	    analysisTitle: string;
+	    analysisRefresh: string;
+	    analysisEmpty: string;
+	    analysisSelf: string;
+	    analysisRank1: string;
+	    analysisRank2: string;
+	    analysisBenchmarkAverage: string;
+	    analysisMetric: string;
+	    analysisDeltaRank1: string;
+	    analysisDeltaRank2: string;
+	    analysisGroup: string;
+	    analysisFetchedAt: string;
 	    statsPeriod7Days: string;
 	    statsPeriod30Days: string;
 	    statsPeriodAllTime: string;
@@ -172,7 +273,14 @@ export namespace model {
 	    kpiJustParry: string;
 	    kpiThrowTech: string;
 	    kpiCornerTime: string;
+	    kpiCorneredTime: string;
+	    kpiGaugeDi: string;
+	    kpiGaugeDrc: string;
 	    kpiSaLv3: string;
+	    kpiPunishCounter: string;
+	    kpiReceivedPunishCounter: string;
+	    kpiThrowCount: string;
+	    kpiReceivedThrowCount: string;
 	    statsNeedMorePoints: string;
 	    tableLpDelta: string;
 	    errGetPlayStats: string;
@@ -199,63 +307,6 @@ export namespace model {
 	    wins: number;
 	    losses: number;
 	    winRate: number;
-	}
-	export interface PlayStatsSnapshot {
-	    id: number;
-	    userId: string;
-	    character: string;
-	    matchReplayId: sql.NullString;
-	    snapshotAt: string;
-	    battleHubMatchPlayCount: number;
-	    casualMatchPlayCount: number;
-	    cornerTime: number;
-	    corneredTime: number;
-	    customRoomMatchPlayCount: number;
-	    driveImpact: number;
-	    driveImpactToDriveImpact: number;
-	    driveParry: number;
-	    driveReversal: number;
-	    gaugeRateCA: number;
-	    gaugeRateDriveArts: number;
-	    gaugeRateDriveGuard: number;
-	    gaugeRateDriveImpact: number;
-	    gaugeRateDriveOther: number;
-	    gaugeRateDriveReversal: number;
-	    gaugeRateDriveRushFromCancel: number;
-	    gaugeRateDriveRushFromParry: number;
-	    gaugeRateSALv1: number;
-	    gaugeRateSALv2: number;
-	    gaugeRateSALv3: number;
-	    justParry: number;
-	    punishCounter: number;
-	    rankMatchPlayCount: number;
-	    receivedDriveImpact: number;
-	    receivedDriveImpactToDriveImpact: number;
-	    receivedPunishCounter: number;
-	    receivedStun: number;
-	    receivedThrowCount: number;
-	    receivedThrowDriveParry: number;
-	    rivalAIAchievedChallengeCount: number;
-	    rivalAIHighestLeagueRank: number;
-	    rivalAIHighestLeagueRankTxt: string;
-	    stun: number;
-	    targetClearCount: number;
-	    throwCount: number;
-	    throwDriveParry: number;
-	    throwTech: number;
-	    totalAllCharacterPlayPoint: number;
-	    enjoyFightPoint: number;
-	    enjoyTotalPoint: number;
-	    enjoyUserPoint: number;
-	    worldTourSeconds: number;
-	    rankedMatchSeconds: number;
-	    casualMatchSeconds: number;
-	    customRoomSeconds: number;
-	    battleHubSeconds: number;
-	    offlineMatchSeconds: number;
-	    arcadeSeconds: number;
-	    practiceSeconds: number;
-	    extremeSeconds: number;
 	}
 	export interface MatchWithStats {
 	    match: Match;

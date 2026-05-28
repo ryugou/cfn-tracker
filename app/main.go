@@ -190,16 +190,18 @@ func main() {
 	}
 
 	browserSrcMatchChan := make(chan model.Match, 1)
+	cfnClient := cfn.NewClient(appBrowser)
 
 	cmdHandler := cmd.NewCommandHandler(
 		sqlDb,
 		noSqlDb,
 		txtDb,
+		cfnClient,
 		&cfg,
 	)
 	trackingHandler := cmd.NewTrackingHandler(
 		wavu.NewClient(),
-		cfn.NewClient(appBrowser),
+		cfnClient,
 		sqlDb,
 		noSqlDb,
 		txtDb,

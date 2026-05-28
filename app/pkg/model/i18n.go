@@ -116,6 +116,19 @@ type Localization struct {
 	ErrReadThemeCSS          string `json:"errReadThemeCSS"`
 	StatsNav                 string `json:"statsNav"`
 	StatsTitle               string `json:"statsTitle"`
+	AnalysisNav              string `json:"analysisNav"`
+	AnalysisTitle            string `json:"analysisTitle"`
+	AnalysisRefresh          string `json:"analysisRefresh"`
+	AnalysisEmpty            string `json:"analysisEmpty"`
+	AnalysisSelf             string `json:"analysisSelf"`
+	AnalysisRank1            string `json:"analysisRank1"`
+	AnalysisRank2            string `json:"analysisRank2"`
+	AnalysisBenchmarkAverage string `json:"analysisBenchmarkAverage"`
+	AnalysisMetric           string `json:"analysisMetric"`
+	AnalysisDeltaRank1       string `json:"analysisDeltaRank1"`
+	AnalysisDeltaRank2       string `json:"analysisDeltaRank2"`
+	AnalysisGroup            string `json:"analysisGroup"`
+	AnalysisFetchedAt        string `json:"analysisFetchedAt"`
 	StatsPeriod7Days         string `json:"statsPeriod7Days"`
 	StatsPeriod30Days        string `json:"statsPeriod30Days"`
 	StatsPeriodAllTime       string `json:"statsPeriodAllTime"`
@@ -133,7 +146,14 @@ type Localization struct {
 	KpiJustParry             string `json:"kpiJustParry"`
 	KpiThrowTech             string `json:"kpiThrowTech"`
 	KpiCornerTime            string `json:"kpiCornerTime"`
+	KpiCorneredTime          string `json:"kpiCorneredTime"`
+	KpiGaugeDi               string `json:"kpiGaugeDi"`
+	KpiGaugeDrc              string `json:"kpiGaugeDrc"`
 	KpiSaLv3                 string `json:"kpiSaLv3"`
+	KpiPunishCounter         string `json:"kpiPunishCounter"`
+	KpiReceivedPunishCounter string `json:"kpiReceivedPunishCounter"`
+	KpiThrowCount            string `json:"kpiThrowCount"`
+	KpiReceivedThrowCount    string `json:"kpiReceivedThrowCount"`
 	StatsNeedMorePoints      string `json:"statsNeedMorePoints"`
 	TableLpDelta             string `json:"tableLpDelta"`
 	ErrGetPlayStats          string `json:"errGetPlayStats"`

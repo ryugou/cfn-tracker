@@ -5,6 +5,7 @@ import { useAnimate } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/helpers/cn'
+import type { LocalizationKey } from '@/main/i18n'
 
 import { ConfigContext } from './config'
 import { AppTitleBar } from './app-titlebar'
@@ -44,14 +45,20 @@ export function AppSidebar() {
   )
 }
 
-const NavItems = [
+const NavItems: Array<{
+  icons: readonly [string, string]
+  href: string
+  labelKey: LocalizationKey
+}> = [
   {
     icons: ['ri:search-line', 'ri:search-fill'],
-    href: 'tracking'
+    href: 'tracking',
+    labelKey: 'tracking'
   },
   {
     icons: ['ion:document-text-outline', 'ion:document-text'],
-    href: 'sessions'
+    href: 'sessions',
+    labelKey: 'sessions'
   },
   {
     icons: ['mdi:chart-line', 'mdi:chart-line'],
@@ -59,14 +66,21 @@ const NavItems = [
     labelKey: 'statsNav'
   },
   {
+    icons: ['mdi:chart-box-outline', 'mdi:chart-box'],
+    href: 'analysis',
+    labelKey: 'analysisNav'
+  },
+  {
     icons: ['clarity:sign-out-line', 'clarity:sign-out-solid'],
-    href: 'output'
+    href: 'output',
+    labelKey: 'output'
   },
   {
     icons: ['teenyicons:cog-outline', 'teenyicons:cog-solid'],
-    href: 'settings'
+    href: 'settings',
+    labelKey: 'settings'
   }
-] as const
+]
 
 function Nav() {
   const location = useLocation()
@@ -77,7 +91,7 @@ function Nav() {
     <nav>
       {NavItems.map(item => {
         const { href, icons } = item
-        const labelKey = 'labelKey' in item ? item.labelKey : href
+        const labelKey = item.labelKey
         const selected = location.pathname.includes(href)
         return (
           <Link
