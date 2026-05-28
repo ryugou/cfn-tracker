@@ -1,4 +1,5 @@
 import React from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import {
   Bar,
@@ -72,6 +73,18 @@ function signed(value: number | undefined, format: Metric['format']) {
   if (value == null) return '—'
   const prefix = value > 0 ? '+' : ''
   return `${prefix}${format(value)}`
+}
+
+function benchmarkGroupLabel(
+  t: TFunction,
+  players: model.BenchmarkPlayer[],
+  rankOffset: number
+) {
+  const isMaster = players.some(player => player.rankOffset === rankOffset && player.leagueRank >= 36)
+  if (isMaster) {
+    return t(rankOffset === 1 ? 'analysisMaster100' : 'analysisMaster200')
+  }
+  return t(rankOffset === 1 ? 'analysisRank1' : 'analysisRank2')
 }
 
 const chartTick = { fill: 'rgba(255,255,255,.78)', fontSize: 11 }
@@ -178,6 +191,8 @@ export function AnalysisPage() {
     return out
   }, [comparison])
   const players = comparison?.players ?? []
+  const rank1Label = benchmarkGroupLabel(t, players, 1)
+  const rank2Label = benchmarkGroupLabel(t, players, 2)
 
   const chartData = metrics.map(metric => ({
     metric: t(metric.labelKey),
@@ -260,11 +275,11 @@ export function AnalysisPage() {
             <div className='mb-4 grid grid-cols-3 gap-3'>
               <Summary label={t('analysisSelf')} value={comparison.self?.snapshotAt ?? '—'} />
               <Summary
-                label={t('analysisRank1')}
+                label={rank1Label}
                 value={`${averages.get(1)?.count ?? 0} / ${players.filter(p => p.rankOffset === 1).length}`}
               />
               <Summary
-                label={t('analysisRank2')}
+                label={rank2Label}
                 value={`${averages.get(2)?.count ?? 0} / ${players.filter(p => p.rankOffset === 2).length}`}
               />
             </div>
@@ -287,8 +302,8 @@ export function AnalysisPage() {
                   <Tooltip contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
                   <Legend verticalAlign='top' align='center' wrapperStyle={chartLegend} />
                   <Bar dataKey='self' name={t('analysisSelf')} fill='#60a5fa' />
-                  <Bar dataKey='rank1' name={t('analysisRank1')} fill='#34d399' />
-                  <Bar dataKey='rank2' name={t('analysisRank2')} fill='#fbbf24' />
+                  <Bar dataKey='rank1' name={rank1Label} fill='#34d399' />
+                  <Bar dataKey='rank2' name={rank2Label} fill='#fbbf24' />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -316,7 +331,13 @@ export function AnalysisPage() {
               </ResponsiveContainer>
             </div>
 
-            <ComparisonTable self={comparison.self} rank1={averages.get(1)?.stats} rank2={averages.get(2)?.stats} />
+            <ComparisonTable
+              self={comparison.self}
+              rank1={averages.get(1)?.stats}
+              rank2={averages.get(2)?.stats}
+              rank1Label={rank1Label}
+              rank2Label={rank2Label}
+            />
             <PlayersTable players={players} />
           </>
         )}
@@ -337,11 +358,15 @@ function Summary({ label, value }: { label: string; value: string }) {
 function ComparisonTable({
   self,
   rank1,
-  rank2
+  rank2,
+  rank1Label,
+  rank2Label
 }: {
   self?: model.PlayStatsSnapshot
   rank1?: model.PlayStatsSnapshot
   rank2?: model.PlayStatsSnapshot
+  rank1Label: string
+  rank2Label: string
 }) {
   const { t } = useTranslation()
   return (
@@ -351,10 +376,10 @@ function ComparisonTable({
           <tr>
             <th className='px-3 py-2'>{t('analysisMetric')}</th>
             <th className='px-3 py-2'>{t('analysisSelf')}</th>
-            <th className='px-3 py-2'>{t('analysisRank1')}</th>
-            <th className='px-3 py-2'>{t('analysisRank2')}</th>
-            <th className='px-3 py-2'>{t('analysisDeltaRank1')}</th>
-            <th className='px-3 py-2'>{t('analysisDeltaRank2')}</th>
+            <th className='px-3 py-2'>{rank1Label}</th>
+            <th className='px-3 py-2'>{rank2Label}</th>
+            <th className='px-3 py-2'>{t('analysisDeltaTo', { target: rank1Label })}</th>
+            <th className='px-3 py-2'>{t('analysisDeltaTo', { target: rank2Label })}</th>
           </tr>
         </thead>
         <tbody>
@@ -414,7 +439,9 @@ function PlayersTable({ players }: { players: model.BenchmarkPlayer[] }) {
                 <div className='text-xs text-white/40'>{player.targetUserId}</div>
                 {player.lastError && <div className='mt-1 text-xs text-rose-400'>{player.lastError}</div>}
               </td>
-              <td className='px-3 py-2'>{player.rankOffset === 1 ? t('analysisRank1') : t('analysisRank2')}</td>
+              <td className='px-3 py-2'>
+                {benchmarkGroupLabel(t, players, player.rankOffset)}
+              </td>
               <td className='px-3 py-2 text-right tabular-nums'>{player.lp}</td>
               <td className='px-3 py-2 text-right tabular-nums'>{player.mr || '—'}</td>
               {metrics.map(metric => (

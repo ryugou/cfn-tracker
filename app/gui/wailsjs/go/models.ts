@@ -250,10 +250,13 @@ export namespace model {
 	    analysisSelf: string;
 	    analysisRank1: string;
 	    analysisRank2: string;
+	    analysisMaster100: string;
+	    analysisMaster200: string;
 	    analysisBenchmarkAverage: string;
 	    analysisMetric: string;
 	    analysisDeltaRank1: string;
 	    analysisDeltaRank2: string;
+	    analysisDeltaTo: string;
 	    analysisGroup: string;
 	    analysisFetchedAt: string;
 	    statsPeriod7Days: string;

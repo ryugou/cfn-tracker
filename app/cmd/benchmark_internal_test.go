@@ -41,24 +41,24 @@ func (f fakeBenchmarkCFNClient) SearchFighters(_ context.Context, params cfn.Fig
 func (f fakeBenchmarkCFNClient) Authenticate(context.Context, string, string, chan tracker.AuthStatus) {
 }
 
-func TestFindBenchmarkCandidatesSelectsTopPlayersForNextRanks(t *testing.T) {
+func TestFindBenchmarkCandidatesSelectsTwoUpAndNextLeague(t *testing.T) {
 	ch := &CommandHandler{
 		cfnClient: fakeBenchmarkCFNClient{
 			search: map[int][]cfn.FighterBanner{
-				9: {
-					fighter("rank9-low", 91, 9, 2100, 0),
-					fighter("rank9-top", 92, 9, 2500, 0),
-					fighter("rank9-mid", 93, 9, 2300, 0),
-					fighter("rank9-second", 94, 9, 2400, 0),
-					fighter("rank9-fifth", 95, 9, 2200, 0),
-					fighter("rank9-fourth", 96, 9, 2250, 0),
-				},
 				10: {
 					fighter("rank10-third", 103, 10, 2700, 0),
 					fighter("rank10-top", 101, 10, 2900, 0),
 					fighter("rank10-second", 102, 10, 2800, 0),
 					fighter("rank10-fourth", 104, 10, 2600, 0),
 					fighter("rank10-fifth", 105, 10, 2500, 0),
+				},
+				11: {
+					fighter("rank11-low", 111, 11, 3000, 0),
+					fighter("rank11-top", 112, 11, 3400, 0),
+					fighter("rank11-mid", 113, 11, 3200, 0),
+					fighter("rank11-second", 114, 11, 3300, 0),
+					fighter("rank11-fifth", 115, 11, 3100, 0),
+					fighter("rank11-fourth", 116, 11, 3150, 0),
 				},
 			},
 		},
@@ -69,27 +69,27 @@ func TestFindBenchmarkCandidatesSelectsTopPlayersForNextRanks(t *testing.T) {
 		t.Fatalf("findBenchmarkCandidates: %v", err)
 	}
 
-	assertShortIDs(t, got[1], []int64{92, 94, 93, 96, 95})
-	assertShortIDs(t, got[2], []int64{101, 102, 103, 104, 105})
+	assertShortIDs(t, got[1], []int64{101, 102, 103, 104, 105})
+	assertShortIDs(t, got[2], []int64{112, 114, 113, 116, 115})
 }
 
-func TestFindBenchmarkCandidatesSplitsMasterPlayersByClosestHigherMR(t *testing.T) {
+func TestFindBenchmarkCandidatesSelectsMasterPlayersAroundTargetMR(t *testing.T) {
 	ch := &CommandHandler{
 		cfnClient: fakeBenchmarkCFNClient{
 			search: map[int][]cfn.FighterBanner{
 				36: {
 					fighter("too-low", 1, 36, 25000, 1499),
 					fighter("self", 42, 36, 25000, 1500),
-					fighter("mr-1600", 1600, 36, 25000, 1600),
-					fighter("mr-1510", 1510, 36, 25000, 1510),
-					fighter("mr-1550", 1550, 36, 25000, 1550),
-					fighter("mr-1520", 1520, 36, 25000, 1520),
-					fighter("mr-1530", 1530, 36, 25000, 1530),
-					fighter("mr-1540", 1540, 36, 25000, 1540),
-					fighter("mr-1560", 1560, 36, 25000, 1560),
-					fighter("mr-1570", 1570, 36, 25000, 1570),
-					fighter("mr-1580", 1580, 36, 25000, 1580),
 					fighter("mr-1590", 1590, 36, 25000, 1590),
+					fighter("mr-1600", 1600, 36, 25000, 1600),
+					fighter("mr-1610", 1610, 36, 25000, 1610),
+					fighter("mr-1580", 1580, 36, 25000, 1580),
+					fighter("mr-1620", 1620, 36, 25000, 1620),
+					fighter("mr-1700", 1700, 36, 25000, 1700),
+					fighter("mr-1690", 1690, 36, 25000, 1690),
+					fighter("mr-1710", 1710, 36, 25000, 1710),
+					fighter("mr-1680", 1680, 36, 25000, 1680),
+					fighter("mr-1720", 1720, 36, 25000, 1720),
 				},
 			},
 		},
@@ -100,8 +100,8 @@ func TestFindBenchmarkCandidatesSplitsMasterPlayersByClosestHigherMR(t *testing.
 		t.Fatalf("findBenchmarkCandidates: %v", err)
 	}
 
-	assertShortIDs(t, got[1], []int64{1510, 1520, 1530, 1540, 1550})
-	assertShortIDs(t, got[2], []int64{1560, 1570, 1580, 1590, 1600})
+	assertShortIDs(t, got[1], []int64{1600, 1610, 1590, 1620, 1580})
+	assertShortIDs(t, got[2], []int64{1700, 1710, 1690, 1720, 1680})
 }
 
 func fighter(name string, shortID int64, leagueRank, lp, mr int) cfn.FighterBanner {
