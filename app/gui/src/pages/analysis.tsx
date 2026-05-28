@@ -74,8 +74,8 @@ function signed(value: number | undefined, format: Metric['format']) {
   return `${prefix}${format(value)}`
 }
 
-const chartTick = { fill: 'rgba(255,255,255,.72)', fontSize: 10 }
-const chartLegend = { color: 'rgba(255,255,255,.82)', fontSize: 11 }
+const chartTick = { fill: 'rgba(255,255,255,.78)', fontSize: 11 }
+const chartLegend = { color: 'rgba(255,255,255,.86)', fontSize: 12 }
 const chartTooltip = {
   background: '#1f1f23',
   border: '1px solid rgba(255,255,255,.18)',
