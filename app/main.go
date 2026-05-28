@@ -215,8 +215,8 @@ func main() {
 	err = wails.Run(&options.App{
 		Title:              fmt.Sprintf("CFN Tracker v%s", appVersion),
 		Assets:             assets,
-		Width:              920,
-		Height:             450,
+		Width:              1380,
+		Height:             675,
 		MinWidth:           800,
 		MinHeight:          450,
 		DisableResize:      false,
