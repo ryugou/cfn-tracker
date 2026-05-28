@@ -390,34 +390,38 @@ function ComparisonTable({
 function PlayersTable({ players }: { players: model.BenchmarkPlayer[] }) {
   const { t } = useTranslation()
   return (
-    <div className='overflow-hidden rounded border border-white/10'>
-      <table className='w-full text-sm'>
+    <div className='overflow-x-auto rounded border border-white/10'>
+      <table className='min-w-max text-sm'>
         <thead className='bg-zinc-900/80 text-left text-xs text-white/60'>
           <tr>
-            <th className='px-3 py-2'>{t('user')}</th>
-            <th className='px-3 py-2'>{t('analysisGroup')}</th>
-            <th className='px-3 py-2'>LP</th>
-            <th className='px-3 py-2'>MR</th>
-            <th className='px-3 py-2'>{t('kpiDriveImpact')}</th>
-            <th className='px-3 py-2'>{t('kpiJustParry')}</th>
-            <th className='px-3 py-2'>{t('kpiThrowTech')}</th>
-            <th className='px-3 py-2'>{t('analysisFetchedAt')}</th>
+            <th className='sticky left-0 z-10 min-w-[150px] bg-zinc-900 px-3 py-2'>{t('user')}</th>
+            <th className='min-w-[92px] px-3 py-2'>{t('analysisGroup')}</th>
+            <th className='min-w-[70px] px-3 py-2 text-right'>LP</th>
+            <th className='min-w-[70px] px-3 py-2 text-right'>MR</th>
+            {metrics.map(metric => (
+              <th key={metric.key} className='min-w-[112px] px-3 py-2 text-right'>
+                {t(metric.labelKey)}
+              </th>
+            ))}
+            <th className='min-w-[140px] px-3 py-2'>{t('analysisFetchedAt')}</th>
           </tr>
         </thead>
         <tbody>
           {players.map(player => (
             <tr key={`${player.rankOffset}-${player.targetUserId}`} className='border-t border-white/10 odd:bg-white/[0.02]'>
-              <td className='px-3 py-2'>
+              <td className='sticky left-0 bg-[#111827] px-3 py-2'>
                 <div className='font-medium'>{player.fighterId}</div>
                 <div className='text-xs text-white/40'>{player.targetUserId}</div>
                 {player.lastError && <div className='mt-1 text-xs text-rose-400'>{player.lastError}</div>}
               </td>
               <td className='px-3 py-2'>{player.rankOffset === 1 ? t('analysisRank1') : t('analysisRank2')}</td>
-              <td className='px-3 py-2 tabular-nums'>{player.lp}</td>
-              <td className='px-3 py-2 tabular-nums'>{player.mr || '—'}</td>
-              <td className='px-3 py-2 tabular-nums'>{formatPerMatchCount(player.stats?.driveImpact)}</td>
-              <td className='px-3 py-2 tabular-nums'>{formatPerMatchCount(player.stats?.justParry)}</td>
-              <td className='px-3 py-2 tabular-nums'>{formatPerMatchCount(player.stats?.throwTech)}</td>
+              <td className='px-3 py-2 text-right tabular-nums'>{player.lp}</td>
+              <td className='px-3 py-2 text-right tabular-nums'>{player.mr || '—'}</td>
+              {metrics.map(metric => (
+                <td key={metric.key} className='px-3 py-2 text-right tabular-nums'>
+                  {metric.format(numeric(player.stats, metric.key))}
+                </td>
+              ))}
               <td className='px-3 py-2 text-xs text-white/50'>{player.fetchedAt || '—'}</td>
             </tr>
           ))}
