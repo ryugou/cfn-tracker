@@ -76,6 +76,12 @@ function signed(value: number | undefined, format: Metric['format']) {
   return `${prefix}${format(value)}`
 }
 
+function formatChartTooltip(value: any, _name: any, item: any): string {
+  if (typeof value !== 'number') return value
+  const metric = metrics.find(row => row.key === item.payload?.metricKey)
+  return metric ? metric.format(value) : value.toFixed(2)
+}
+
 function benchmarkGroupLabel(
   t: TFunction,
   players: model.BenchmarkPlayer[],
@@ -221,6 +227,7 @@ export function AnalysisPage() {
 
   const chartData = metrics.map(metric => ({
     metric: t(metric.labelKey),
+    metricKey: metric.key,
     self: numeric(comparison?.self, metric.key),
     rank1: numeric(averages.get(1)?.stats, metric.key),
     rank2: numeric(averages.get(2)?.stats, metric.key)
@@ -234,6 +241,7 @@ export function AnalysisPage() {
     const avg = values?.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined
     return {
       metric: t(metric.labelKey),
+      metricKey: metric.key,
       self: numeric(comparison?.self, metric.key),
       field: avg
     }
@@ -329,7 +337,7 @@ export function AnalysisPage() {
                     stroke='rgba(255,255,255,.3)'
                   />
                   <YAxis tick={chartTick} stroke='rgba(255,255,255,.3)' />
-                  <Tooltip contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
+                  <Tooltip formatter={formatChartTooltip} contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
                   <Legend verticalAlign='top' align='center' wrapperStyle={chartLegend} />
                   <Bar dataKey='self' name={t('analysisSelf')} fill='#60a5fa' />
                   <Bar dataKey='rank1' name={rank1Label} fill='#34d399' />
@@ -353,7 +361,7 @@ export function AnalysisPage() {
                     stroke='rgba(255,255,255,.3)'
                   />
                   <YAxis tick={chartTick} stroke='rgba(255,255,255,.3)' />
-                  <Tooltip contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
+                  <Tooltip formatter={formatChartTooltip} contentStyle={chartTooltip} labelStyle={{ color: '#f4f4f5' }} />
                   <Legend verticalAlign='top' align='center' wrapperStyle={chartLegend} />
                   <Bar dataKey='self' name={t('analysisSelf')} fill='#60a5fa' />
                   <Bar dataKey='field' name={t('analysisBenchmarkAverage')} fill='#a78bfa' />
