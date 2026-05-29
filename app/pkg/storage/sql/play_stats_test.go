@@ -407,6 +407,64 @@ func TestSaveAndGetBenchmarkPlayers(t *testing.T) {
 	}
 }
 
+func TestSaveAndListAdviceRuns(t *testing.T) {
+	ctx := context.Background()
+	first := &model.AdviceRun{
+		UserId:      "advice-u",
+		Character:   "JP",
+		InputWindow: 30,
+		SnapshotAt:  "2026-05-29 10:00:00",
+		Candidates: []*model.AdviceCandidate{
+			{
+				Mode:            model.AdviceModeDBOnly,
+				Priority:        "高",
+				Theme:           "DI被弾を減らす",
+				Summary:         "summary",
+				Rationale:       "rationale",
+				Action:          "action",
+				Drill:           "drill",
+				SuccessCriteria: "success",
+				WatchMetrics:    "DI被弾",
+				Evidence: []model.AdviceEvidence{
+					{Source: "db", Title: "DI被弾", Text: "evidence"},
+				},
+			},
+		},
+	}
+	second := &model.AdviceRun{
+		UserId:      "advice-u",
+		Character:   "JP",
+		InputWindow: 30,
+		SnapshotAt:  "2026-05-29 11:00:00",
+		Candidates: []*model.AdviceCandidate{
+			{Mode: model.AdviceModeGraphRAG, Theme: "投げ択を増やす", Action: "action"},
+		},
+	}
+
+	if err := store.SaveAdviceRun(ctx, first); err != nil {
+		t.Fatalf("SaveAdviceRun(first): %v", err)
+	}
+	if err := store.SaveAdviceRun(ctx, second); err != nil {
+		t.Fatalf("SaveAdviceRun(second): %v", err)
+	}
+	runs, err := store.GetAdviceRuns(ctx, "advice-u", "JP", 20)
+	if err != nil {
+		t.Fatalf("GetAdviceRuns: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("advice runs = %d, want 2", len(runs))
+	}
+	if runs[0].Id != second.Id {
+		t.Fatalf("latest run id = %d, want %d", runs[0].Id, second.Id)
+	}
+	if len(runs[1].Candidates) != 1 {
+		t.Fatalf("first candidates = %d, want 1", len(runs[1].Candidates))
+	}
+	if runs[1].Candidates[0].Evidence[0].Text != "evidence" {
+		t.Fatalf("evidence did not roundtrip: %+v", runs[1].Candidates[0].Evidence)
+	}
+}
+
 func TestGetBenchmarkPlayersReturnsTopFivePerRankOffset(t *testing.T) {
 	ctx := context.Background()
 	players := make([]*model.BenchmarkPlayer, 0, 14)
