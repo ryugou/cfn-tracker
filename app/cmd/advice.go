@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
@@ -35,11 +34,6 @@ const (
 )
 
 var adviceHTTPClient = http.DefaultClient
-var loadAnthropicAPIKeyFunc = loadAnthropicAPIKey
-var anthropicAPIKeyCache = struct {
-	sync.Mutex
-	value string
-}{}
 
 type adviceContext struct {
 	UserID         string                  `json:"userId"`
@@ -96,15 +90,15 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 	adviceCtx := buildAdviceContext(userId, character, latest, signals, len(players))
 	sonnetModel := adviceLLMModel(anthropicSonnetModelEnvKey, defaultAnthropicSonnetModel)
 	opusModel := adviceLLMModel(anthropicOpusModelEnvKey, defaultAnthropicOpusModel)
-	apiKey, apiKeyErr := loadAnthropicAPIKeyFunc(ctx)
+	apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey))
 
 	dbFallback := buildDBOnlyAdvice(signals)
-	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, apiKey, apiKeyErr, adviceCtx, nil, dbFallback)
+	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, apiKey, adviceCtx, nil, dbFallback)
 	graphEvidence := ch.searchVegapunkEvidence(ctx, character, dbCandidate.Theme, dbCandidate.Summary)
 	graphSonnetFallback := buildGraphRAGAdvice(signals, graphEvidence)
-	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, apiKey, apiKeyErr, adviceCtx, graphEvidence, graphSonnetFallback)
+	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, apiKey, adviceCtx, graphEvidence, graphSonnetFallback)
 	graphOpusFallback := buildGraphRAGAdvice(signals, graphEvidence)
-	graphOpusCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordOpus46, opusModel, apiKey, apiKeyErr, adviceCtx, graphEvidence, graphOpusFallback)
+	graphOpusCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordOpus46, opusModel, apiKey, adviceCtx, graphEvidence, graphOpusFallback)
 
 	run := &model.AdviceRun{
 		UserId:      userId,
@@ -266,13 +260,12 @@ func (ch *CommandHandler) generateAdviceWithLLM(
 	mode model.AdviceMode,
 	modelName string,
 	apiKey string,
-	apiKeyErr error,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 	fallback *model.AdviceCandidate,
 ) *model.AdviceCandidate {
 	fallback.Mode = mode
-	candidate, err := requestAdviceLLM(ctx, mode, modelName, apiKey, apiKeyErr, adviceCtx, graphEvidence)
+	candidate, err := requestAdviceLLM(ctx, mode, modelName, apiKey, adviceCtx, graphEvidence)
 	if err != nil {
 		fallback.Evidence = append(fallback.Evidence, model.AdviceEvidence{
 			Source: "llm",
@@ -293,13 +286,9 @@ func requestAdviceLLM(
 	mode model.AdviceMode,
 	modelName string,
 	apiKey string,
-	apiKeyErr error,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 ) (*model.AdviceCandidate, error) {
-	if apiKeyErr != nil {
-		return nil, apiKeyErr
-	}
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, fmt.Errorf("%s is empty", anthropicAPIKeyEnvKey)
 	}
@@ -382,14 +371,15 @@ func requestAdviceLLM(
 	return candidate, nil
 }
 
-func loadAnthropicAPIKey(ctx context.Context) (string, error) {
-	anthropicAPIKeyCache.Lock()
-	defer anthropicAPIKeyCache.Unlock()
-	if anthropicAPIKeyCache.value != "" {
-		return anthropicAPIKeyCache.value, nil
+func InitializeAdviceLLMConfig(ctx context.Context) error {
+	apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey))
+	if apiKey != "" && !strings.HasPrefix(apiKey, "op://") {
+		return nil
 	}
-
 	opRef := strings.TrimSpace(os.Getenv(anthropicAPIKeyOPRefEnvKey))
+	if strings.HasPrefix(apiKey, "op://") {
+		opRef = apiKey
+	}
 	if opRef == "" {
 		opRef = defaultAnthropicAPIKeyOPRef
 	}
@@ -400,16 +390,15 @@ func loadAnthropicAPIKey(ctx context.Context) (string, error) {
 	if err != nil {
 		detail := strings.TrimSpace(stderr.String())
 		if detail != "" {
-			return "", fmt.Errorf("1Password reference %q could not be read: %w: %s", opRef, err, detail)
+			return fmt.Errorf("1Password reference %q could not be read: %w: %s", opRef, err, detail)
 		}
-		return "", fmt.Errorf("1Password reference %q could not be read: %w", opRef, err)
+		return fmt.Errorf("1Password reference %q could not be read: %w", opRef, err)
 	}
-	apiKey := strings.TrimSpace(string(out))
+	apiKey = strings.TrimSpace(string(out))
 	if apiKey == "" {
-		return "", fmt.Errorf("1Password reference %q returned an empty Anthropic API key", opRef)
+		return fmt.Errorf("1Password reference %q returned an empty Anthropic API key", opRef)
 	}
-	anthropicAPIKeyCache.value = apiKey
-	return apiKey, nil
+	return os.Setenv(anthropicAPIKeyEnvKey, apiKey)
 }
 
 func adviceLLMModel(envKey, fallback string) string {

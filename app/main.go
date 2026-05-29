@@ -100,12 +100,18 @@ func init() {
 			CapIDPassword:     capIDPassword,
 			BrowserSourcePort: 4242,
 		}
+		if err := cmd.InitializeAdviceLLMConfig(context.Background()); err != nil {
+			slog.Warn("initialize advice llm config", slog.Any("error", err))
+		}
 		return
 	}
 	if err := envconfig.Process("", &cfg); err != nil {
 		log.Fatalf("process envconfig: %v", err)
 	}
 	cfg.AppVersion = wailsCfg.Info.ProductVersion
+	if err := cmd.InitializeAdviceLLMConfig(context.Background()); err != nil {
+		slog.Warn("initialize advice llm config", slog.Any("error", err))
+	}
 }
 
 func closeWithError(err error) {
