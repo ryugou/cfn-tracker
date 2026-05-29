@@ -29,6 +29,16 @@ func TestParseAdviceCandidateJSONAcceptsFencedJSON(t *testing.T) {
 	}
 }
 
+func TestParseAdviceCandidateJSONAcceptsNumericPriority(t *testing.T) {
+	candidate, err := parseAdviceCandidateJSON(`{"priority":1,"theme":"投げを増やす","summary":"要約","rationale":"根拠","action":"施策","drill":"練習","successCriteria":"成功","watchMetrics":"投げ","risks":"副作用"}`)
+	if err != nil {
+		t.Fatalf("parseAdviceCandidateJSON: %v", err)
+	}
+	if candidate.Priority != "1" {
+		t.Fatalf("Priority = %q", candidate.Priority)
+	}
+}
+
 func TestParseAdviceCandidateJSONRejectsMissingRequiredFields(t *testing.T) {
 	if _, err := parseAdviceCandidateJSON(`{"priority":"高","theme":"DI被弾を減らす"}`); err == nil {
 		t.Fatal("expected error for missing action")

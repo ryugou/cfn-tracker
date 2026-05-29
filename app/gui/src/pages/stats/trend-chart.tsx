@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } f
 
 import { model } from '@model'
 import type { LocalizationKey } from '@/main/i18n'
+import { formatJSTDateTime } from '@/helpers/date'
 
 type Props = {
   // User-wide snapshot history (per Capcom /play `battle_stats`, which is
@@ -45,7 +46,7 @@ export function TrendChart({ history }: Props) {
   }
 
   const data = history.map(s => ({
-    snapshotAt: s.snapshotAt,
+    snapshotAt: formatJSTDateTime(s.snapshotAt),
     ...Object.fromEntries(series.map(sr => [sr.key, s[sr.key] as number]))
   }))
 

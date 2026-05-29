@@ -12,6 +12,7 @@ import * as HoverCard from '@/ui/hover-card'
 import * as Page from '@/ui/page'
 import { Button } from '@/ui/button'
 import { cn } from '@/helpers/cn'
+import { formatJSTTime, getJSTDay } from '@/helpers/date'
 
 export function SessionsListPage() {
   const { i18n, t } = useTranslation()
@@ -26,8 +27,7 @@ export function SessionsListPage() {
 
   const sessionsByDay = (sessions ?? []).reduce(
     (group, session) => {
-      const date = new Date(session.createdAt)
-      const day = date.getDate()
+      const day = getJSTDay(session.createdAt)
       group[day] = group[day] ?? []
       group[day].push(session)
       return group
@@ -113,10 +113,7 @@ export function SessionsListPage() {
                       onClick={() => navigate(`/sessions/${s.id}/matches`)}
                     >
                       <span className='text-base font-bold'>
-                        {Intl.DateTimeFormat(i18n.resolvedLanguage, {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        }).format(new Date(s.createdAt))}
+                        {formatJSTTime(s.createdAt, i18n.resolvedLanguage)}
                       </span>
                       <span className='text-base font-light'>{s.userName}</span>
                     </Button>

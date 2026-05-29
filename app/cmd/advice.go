@@ -464,33 +464,64 @@ func parseAdviceCandidateJSON(content string) (*model.AdviceCandidate, error) {
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 	var out struct {
-		Priority        string `json:"priority"`
-		Theme           string `json:"theme"`
-		Summary         string `json:"summary"`
-		Rationale       string `json:"rationale"`
-		Action          string `json:"action"`
-		Drill           string `json:"drill"`
-		SuccessCriteria string `json:"successCriteria"`
-		WatchMetrics    string `json:"watchMetrics"`
-		Risks           string `json:"risks"`
+		Priority        adviceJSONText `json:"priority"`
+		Theme           adviceJSONText `json:"theme"`
+		Summary         adviceJSONText `json:"summary"`
+		Rationale       adviceJSONText `json:"rationale"`
+		Action          adviceJSONText `json:"action"`
+		Drill           adviceJSONText `json:"drill"`
+		SuccessCriteria adviceJSONText `json:"successCriteria"`
+		WatchMetrics    adviceJSONText `json:"watchMetrics"`
+		Risks           adviceJSONText `json:"risks"`
 	}
 	if err := json.Unmarshal([]byte(content), &out); err != nil {
 		return nil, fmt.Errorf("parse advice json: %w", err)
 	}
-	if out.Theme == "" || out.Action == "" {
+	if out.Theme.String() == "" || out.Action.String() == "" {
 		return nil, fmt.Errorf("advice json is missing required fields")
 	}
 	return &model.AdviceCandidate{
-		Priority:        out.Priority,
-		Theme:           out.Theme,
-		Summary:         out.Summary,
-		Rationale:       out.Rationale,
-		Action:          out.Action,
-		Drill:           out.Drill,
-		SuccessCriteria: out.SuccessCriteria,
-		WatchMetrics:    out.WatchMetrics,
-		Risks:           out.Risks,
+		Priority:        out.Priority.String(),
+		Theme:           out.Theme.String(),
+		Summary:         out.Summary.String(),
+		Rationale:       out.Rationale.String(),
+		Action:          out.Action.String(),
+		Drill:           out.Drill.String(),
+		SuccessCriteria: out.SuccessCriteria.String(),
+		WatchMetrics:    out.WatchMetrics.String(),
+		Risks:           out.Risks.String(),
 	}, nil
+}
+
+type adviceJSONText string
+
+func (t *adviceJSONText) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*t = ""
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*t = adviceJSONText(s)
+		return nil
+	}
+	var n json.Number
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&n); err == nil {
+		*t = adviceJSONText(n.String())
+		return nil
+	}
+	var b bool
+	if err := json.Unmarshal(data, &b); err == nil {
+		*t = adviceJSONText(fmt.Sprintf("%t", b))
+		return nil
+	}
+	return fmt.Errorf("expected string-compatible value, got %s", strings.TrimSpace(string(data)))
+}
+
+func (t adviceJSONText) String() string {
+	return strings.TrimSpace(string(t))
 }
 
 func dbEvidenceFromContext(adviceCtx adviceContext) []model.AdviceEvidence {
