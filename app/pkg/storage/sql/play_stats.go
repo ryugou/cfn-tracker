@@ -150,6 +150,29 @@ func (s *Storage) GetLatestPlayStatsSnapshot(
 	return rows[0], nil
 }
 
+func (s *Storage) GetRecentPlayStatsSnapshots(
+	ctx context.Context,
+	userId string,
+	limit int,
+) ([]*model.PlayStatsSnapshot, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	rows := []*model.PlayStatsSnapshot{}
+	if err := s.db.SelectContext(ctx, &rows, `
+		SELECT * FROM (
+			SELECT * FROM play_stats_snapshots
+			WHERE user_id = ?
+			ORDER BY snapshot_at DESC, id DESC
+			LIMIT ?
+		)
+		ORDER BY snapshot_at ASC, id ASC
+	`, userId, limit); err != nil {
+		return nil, fmt.Errorf("get recent play stats snapshots: %w", err)
+	}
+	return rows, nil
+}
+
 func (s *Storage) GetMatchesWithPlayStats(
 	ctx context.Context,
 	userId, character string,

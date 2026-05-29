@@ -116,6 +116,8 @@
   "statsTitle": "Play Stats Trend",
   "analysisNav": "Analysis",
   "analysisTitle": "Analysis",
+  "adviceNav": "Advice",
+  "adviceTitle": "Advice Comparison",
   "analysisRefresh": "Refresh benchmarks",
   "analysisEmpty": "No benchmark cache yet. Refresh to fetch same-character players from higher rank bands.",
   "analysisSelf": "You",

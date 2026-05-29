@@ -71,6 +71,11 @@ const NavItems: Array<{
     labelKey: 'analysisNav'
   },
   {
+    icons: ['mdi:lightbulb-on-outline', 'mdi:lightbulb-on'],
+    href: 'advice',
+    labelKey: 'adviceNav'
+  },
+  {
     icons: ['clarity:sign-out-line', 'clarity:sign-out-solid'],
     href: 'output',
     labelKey: 'output'

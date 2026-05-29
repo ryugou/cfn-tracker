@@ -1,5 +1,5 @@
 export namespace model {
-	
+
 	export enum ErrorLocalizationKey {
 	    errAuth = "errAuth",
 	    errCheckForUpdate = "errCheckForUpdate",
@@ -29,6 +29,38 @@ export namespace model {
 	    DEFAULT = "default",
 	    ENTH = "enth",
 	    TEKKEN = "tekken",
+	}
+	export interface AdviceEvidence {
+	    source: string;
+	    title: string;
+	    text: string;
+	    score?: number;
+	}
+	export interface AdviceCandidate {
+	    id: number;
+	    runId: number;
+	    mode: string;
+	    priority: string;
+	    theme: string;
+	    summary: string;
+	    rationale: string;
+	    action: string;
+	    drill: string;
+	    successCriteria: string;
+	    watchMetrics: string;
+	    risks: string;
+	    evidence: AdviceEvidence[];
+	    createdAt: string;
+	}
+
+	export interface AdviceRun {
+	    id: number;
+	    userId: string;
+	    character: string;
+	    inputWindow: number;
+	    snapshotAt: string;
+	    createdAt: string;
+	    candidates: AdviceCandidate[];
 	}
 	export interface BenchmarkRankAverage {
 	    rankOffset: number;
@@ -248,6 +280,8 @@ export namespace model {
 	    statsTitle: string;
 	    analysisNav: string;
 	    analysisTitle: string;
+	    adviceNav: string;
+	    adviceTitle: string;
 	    analysisRefresh: string;
 	    analysisEmpty: string;
 	    analysisSelf: string;
@@ -365,4 +399,3 @@ export namespace sql {
 	}
 
 }
-

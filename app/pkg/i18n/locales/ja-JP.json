@@ -116,6 +116,8 @@
   "statsTitle": "実績推移",
   "analysisNav": "分析",
   "analysisTitle": "分析",
+  "adviceNav": "アドバイス",
+  "adviceTitle": "アドバイス比較",
   "analysisRefresh": "ベンチマーク更新",
   "analysisEmpty": "ベンチマークが未取得です。更新ボタンで同キャラ上位帯のユーザーを取得します。",
   "analysisSelf": "自分",

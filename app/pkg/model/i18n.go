@@ -118,6 +118,8 @@ type Localization struct {
 	StatsTitle               string `json:"statsTitle"`
 	AnalysisNav              string `json:"analysisNav"`
 	AnalysisTitle            string `json:"analysisTitle"`
+	AdviceNav                string `json:"adviceNav"`
+	AdviceTitle              string `json:"adviceTitle"`
 	AnalysisRefresh          string `json:"analysisRefresh"`
 	AnalysisEmpty            string `json:"analysisEmpty"`
 	AnalysisSelf             string `json:"analysisSelf"`
