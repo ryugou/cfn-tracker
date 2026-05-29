@@ -92,7 +92,7 @@ func init() {
 		logToFile()
 	}
 
-	if err := godotenv.Load(".env"); err != nil {
+	if err := godotenv.Load(envFilePath()); err != nil {
 		cfg = config.BuildConfig{
 			AppVersion:        wailsCfg.Info.ProductVersion,
 			Headless:          isProduction == "true",
@@ -112,6 +112,13 @@ func init() {
 	if err := cmd.InitializeAdviceLLMConfig(context.Background()); err != nil {
 		slog.Warn("initialize advice llm config", slog.Any("error", err))
 	}
+}
+
+func envFilePath() string {
+	if _, err := os.Stat("app/.env"); err == nil {
+		return "app/.env"
+	}
+	return ".env"
 }
 
 func closeWithError(err error) {
