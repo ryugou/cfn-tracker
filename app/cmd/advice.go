@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
@@ -34,6 +35,10 @@ const (
 
 var adviceHTTPClient = http.DefaultClient
 var loadAnthropicAPIKeyFunc = loadAnthropicAPIKey
+var anthropicAPIKeyCache = struct {
+	sync.Mutex
+	value string
+}{}
 
 type adviceContext struct {
 	UserID         string                  `json:"userId"`
@@ -381,20 +386,32 @@ func loadAnthropicAPIKey(ctx context.Context) (string, error) {
 		return apiKey, nil
 	}
 
+	anthropicAPIKeyCache.Lock()
+	defer anthropicAPIKeyCache.Unlock()
+	if anthropicAPIKeyCache.value != "" {
+		return anthropicAPIKeyCache.value, nil
+	}
+
 	opRef := strings.TrimSpace(os.Getenv(anthropicAPIKeyOPRefEnvKey))
 	if opRef == "" {
 		opRef = defaultAnthropicAPIKeyOPRef
 	}
-	cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(cmdCtx, "op", "read", opRef).Output()
+	cmd := exec.CommandContext(ctx, "op", "read", opRef)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return "", fmt.Errorf("%s is not configured and 1Password reference %q could not be read: %w: %s", anthropicAPIKeyEnvKey, opRef, err, detail)
+		}
 		return "", fmt.Errorf("%s is not configured and 1Password reference %q could not be read: %w", anthropicAPIKeyEnvKey, opRef, err)
 	}
 	apiKey := strings.TrimSpace(string(out))
 	if apiKey == "" {
 		return "", fmt.Errorf("1Password reference %q returned an empty Anthropic API key", opRef)
 	}
+	anthropicAPIKeyCache.value = apiKey
 	return apiKey, nil
 }
 

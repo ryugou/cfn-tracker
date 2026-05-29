@@ -36,6 +36,7 @@ func TestParseAdviceCandidateJSONRejectsMissingRequiredFields(t *testing.T) {
 }
 
 func TestLoadAnthropicAPIKeyPrefersEnv(t *testing.T) {
+	resetAnthropicAPIKeyCache(t)
 	t.Setenv(anthropicAPIKeyEnvKey, "env-key")
 	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://unused")
 
@@ -49,6 +50,7 @@ func TestLoadAnthropicAPIKeyPrefersEnv(t *testing.T) {
 }
 
 func TestLoadAnthropicAPIKeyFallsBackTo1PasswordRef(t *testing.T) {
+	resetAnthropicAPIKeyCache(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test helper is unix-only")
 	}
@@ -67,6 +69,41 @@ func TestLoadAnthropicAPIKeyFallsBackTo1PasswordRef(t *testing.T) {
 	}
 	if key != "op-key" {
 		t.Fatalf("key = %q", key)
+	}
+}
+
+func TestLoadAnthropicAPIKeyCaches1PasswordValue(t *testing.T) {
+	resetAnthropicAPIKeyCache(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test helper is unix-only")
+	}
+	dir := t.TempDir()
+	countPath := filepath.Join(dir, "count")
+	opPath := filepath.Join(dir, "op")
+	script := "#!/bin/sh\nprintf x >> \"$COUNT_FILE\"\nprintf 'op-key\\n'\n"
+	if err := os.WriteFile(opPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake op: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("COUNT_FILE", countPath)
+	t.Setenv(anthropicAPIKeyEnvKey, "")
+	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://ai-agents/CFN-Tracker/credential")
+
+	for i := 0; i < 2; i++ {
+		key, err := loadAnthropicAPIKey(context.Background())
+		if err != nil {
+			t.Fatalf("loadAnthropicAPIKey(%d): %v", i, err)
+		}
+		if key != "op-key" {
+			t.Fatalf("key(%d) = %q", i, key)
+		}
+	}
+	count, err := os.ReadFile(countPath)
+	if err != nil {
+		t.Fatalf("read count: %v", err)
+	}
+	if string(count) != "x" {
+		t.Fatalf("op calls = %q, want one call", string(count))
 	}
 }
 
@@ -156,6 +193,13 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 	if !foundModelEvidence {
 		t.Fatalf("expected llm model evidence, got %#v", candidate.Evidence)
 	}
+}
+
+func resetAnthropicAPIKeyCache(t *testing.T) {
+	t.Helper()
+	anthropicAPIKeyCache.Lock()
+	defer anthropicAPIKeyCache.Unlock()
+	anthropicAPIKeyCache.value = ""
 }
 
 func TestGenerateAdviceComparisonLoadsAnthropicAPIKeyOnce(t *testing.T) {
