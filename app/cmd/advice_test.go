@@ -55,6 +55,18 @@ func TestInitializeAdviceLLMConfigKeepsRawEnvKey(t *testing.T) {
 	}
 }
 
+func TestInitializeAdviceLLMConfigSkipsWhenUnset(t *testing.T) {
+	t.Setenv(anthropicAPIKeyEnvKey, "")
+	t.Setenv(anthropicAPIKeyOPRefEnvKey, "")
+
+	if err := InitializeAdviceLLMConfig(context.Background()); err != nil {
+		t.Fatalf("InitializeAdviceLLMConfig: %v", err)
+	}
+	if key := os.Getenv(anthropicAPIKeyEnvKey); key != "" {
+		t.Fatalf("%s = %q", anthropicAPIKeyEnvKey, key)
+	}
+}
+
 func TestInitializeAdviceLLMConfigFallsBackTo1PasswordRef(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test helper is unix-only")

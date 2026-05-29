@@ -30,7 +30,6 @@ const (
 	anthropicBaseURLEnvKey      = "ANTHROPIC_BASE_URL"
 	anthropicVersionEnvKey      = "ANTHROPIC_VERSION"
 	anthropicAPIKeyOPRefEnvKey  = "ANTHROPIC_API_KEY_OP_REF"
-	defaultAnthropicAPIKeyOPRef = "op://ai-agents/CFN-Tracker/credential"
 )
 
 var adviceHTTPClient = http.DefaultClient
@@ -381,7 +380,7 @@ func InitializeAdviceLLMConfig(ctx context.Context) error {
 		opRef = apiKey
 	}
 	if opRef == "" {
-		opRef = defaultAnthropicAPIKeyOPRef
+		return nil
 	}
 	cmd := exec.CommandContext(ctx, "op", "read", opRef)
 	var stderr bytes.Buffer
