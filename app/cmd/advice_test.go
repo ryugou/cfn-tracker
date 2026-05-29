@@ -38,6 +38,32 @@ func TestParseAdviceCandidateJSONAcceptsNumericPriority(t *testing.T) {
 	}
 }
 
+func TestParseAdviceCandidateJSONAcceptsStructuredTextValues(t *testing.T) {
+	candidate, err := parseAdviceCandidateJSON(`{
+		"priority":"高",
+		"theme":"投げ択を増やす",
+		"summary":"要約",
+		"rationale":{
+			"observations":["throw_countが低い","cornered_timeが長い"],
+			"hypotheses":["投げ択不足で守勢が続いている可能性"]
+		},
+		"action":"施策",
+		"drill":"練習",
+		"successCriteria":["投げ回数を増やす","壁際時間を下げる"],
+		"watchMetrics":["throw_count","cornered_time"],
+		"risks":"副作用"
+	}`)
+	if err != nil {
+		t.Fatalf("parseAdviceCandidateJSON: %v", err)
+	}
+	if !strings.Contains(candidate.Rationale, "observations:") {
+		t.Fatalf("Rationale = %q", candidate.Rationale)
+	}
+	if !strings.Contains(candidate.SuccessCriteria, "- 投げ回数を増やす") {
+		t.Fatalf("SuccessCriteria = %q", candidate.SuccessCriteria)
+	}
+}
+
 func TestParseAdviceCandidateJSONRejectsMissingRequiredFields(t *testing.T) {
 	if _, err := parseAdviceCandidateJSON(`{"priority":"高","theme":"DI被弾を減らす"}`); err == nil {
 		t.Fatal("expected error for missing action")

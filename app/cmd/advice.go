@@ -273,7 +273,7 @@ func (ch *CommandHandler) generateAdviceWithLLM(
 	if err != nil {
 		fallback.Evidence = append(fallback.Evidence, model.AdviceEvidence{
 			Source: "llm",
-			Title:  "LLM未使用",
+			Title:  "LLM結果使用不可",
 			Text:   err.Error(),
 		})
 		return fallback
@@ -435,6 +435,7 @@ func adviceSystemPrompt(mode model.AdviceMode) string {
 		modeInstruction,
 		"返答はJSONのみ。Markdownや説明文は不要です。",
 		"JSON keys: priority, theme, summary, rationale, action, drill, successCriteria, watchMetrics, risks",
+		"各JSON valueは文字列にしてください。配列やオブジェクトは使わず、複数項目は改行区切りの文字列にしてください。",
 	}, "\n")
 }
 
@@ -520,11 +521,64 @@ func (t *adviceJSONText) UnmarshalJSON(data []byte) error {
 		*t = adviceJSONText(fmt.Sprintf("%t", b))
 		return nil
 	}
-	return fmt.Errorf("expected string-compatible value, got %s", strings.TrimSpace(string(data)))
+	text, err := adviceJSONValueToText(data)
+	if err != nil {
+		return err
+	}
+	*t = adviceJSONText(text)
+	return nil
 }
 
 func (t adviceJSONText) String() string {
 	return strings.TrimSpace(string(t))
+}
+
+func adviceJSONValueToText(data []byte) (string, error) {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return "", fmt.Errorf("expected JSON value, got %s", strings.TrimSpace(string(data)))
+	}
+	return strings.TrimSpace(formatAdviceJSONValue(value, 0)), nil
+}
+
+func formatAdviceJSONValue(value any, depth int) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case json.Number:
+		return v.String()
+	case bool:
+		return fmt.Sprintf("%t", v)
+	case []any:
+		lines := make([]string, 0, len(v))
+		for _, item := range v {
+			text := strings.TrimSpace(formatAdviceJSONValue(item, depth+1))
+			if text != "" {
+				lines = append(lines, "- "+text)
+			}
+		}
+		return strings.Join(lines, "\n")
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		lines := make([]string, 0, len(keys))
+		for _, key := range keys {
+			text := strings.TrimSpace(formatAdviceJSONValue(v[key], depth+1))
+			if text != "" {
+				lines = append(lines, fmt.Sprintf("%s: %s", key, text))
+			}
+		}
+		return strings.Join(lines, "\n")
+	default:
+		return fmt.Sprint(v)
+	}
 }
 
 func dbEvidenceFromContext(adviceCtx adviceContext) []model.AdviceEvidence {
