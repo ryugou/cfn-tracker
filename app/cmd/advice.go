@@ -28,6 +28,8 @@ const (
 	anthropicAPIKeyEnvKey       = "ANTHROPIC_API_KEY"
 	anthropicBaseURLEnvKey      = "ANTHROPIC_BASE_URL"
 	anthropicVersionEnvKey      = "ANTHROPIC_VERSION"
+	anthropicAPIKeyOPRefEnvKey  = "ANTHROPIC_API_KEY_OP_REF"
+	defaultAnthropicAPIKeyOPRef = "op://ai-agents/CFN-Tracker/Anthropic APIKey"
 )
 
 type adviceContext struct {
@@ -281,9 +283,9 @@ func requestAdviceLLM(
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 ) (*model.AdviceCandidate, error) {
-	apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey))
-	if apiKey == "" {
-		return nil, fmt.Errorf("%s is not configured", anthropicAPIKeyEnvKey)
+	apiKey, err := loadAnthropicAPIKey(ctx)
+	if err != nil {
+		return nil, err
 	}
 	system := adviceSystemPrompt(mode)
 	user, err := adviceUserPrompt(mode, adviceCtx, graphEvidence)
@@ -357,6 +359,28 @@ func requestAdviceLLM(
 	}
 	candidate.Evidence = append(dbEvidenceFromContext(adviceCtx), graphEvidence...)
 	return candidate, nil
+}
+
+func loadAnthropicAPIKey(ctx context.Context) (string, error) {
+	if apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey)); apiKey != "" {
+		return apiKey, nil
+	}
+
+	opRef := strings.TrimSpace(os.Getenv(anthropicAPIKeyOPRefEnvKey))
+	if opRef == "" {
+		opRef = defaultAnthropicAPIKeyOPRef
+	}
+	cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(cmdCtx, "op", "read", opRef).Output()
+	if err != nil {
+		return "", fmt.Errorf("%s is not configured and 1Password reference %q could not be read: %w", anthropicAPIKeyEnvKey, opRef, err)
+	}
+	apiKey := strings.TrimSpace(string(out))
+	if apiKey == "" {
+		return "", fmt.Errorf("1Password reference %q returned an empty Anthropic API key", opRef)
+	}
+	return apiKey, nil
 }
 
 func adviceLLMModel(envKey, fallback string) string {
