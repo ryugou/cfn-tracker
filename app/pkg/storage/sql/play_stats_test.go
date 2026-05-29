@@ -3,6 +3,7 @@ package sql
 import (
 	"context"
 	stdsql "database/sql"
+	"fmt"
 	"io/fs"
 	"log"
 	"os"
@@ -374,6 +375,9 @@ func TestSaveAndGetBenchmarkPlayers(t *testing.T) {
 			LP:                30000,
 			MR:                1600,
 			MRRanking:         1000,
+			Wins:              11,
+			Losses:            4,
+			WinDiff:           7,
 			LastPlayAt:        1779859033,
 			Stats:             &stats,
 		},
@@ -400,6 +404,61 @@ func TestSaveAndGetBenchmarkPlayers(t *testing.T) {
 	}
 	if got[0].FetchedAt == "" {
 		t.Errorf("FetchedAt should be populated")
+	}
+}
+
+func TestGetBenchmarkPlayersReturnsTopFivePerRankOffset(t *testing.T) {
+	ctx := context.Background()
+	players := make([]*model.BenchmarkPlayer, 0, 14)
+	for offset := 1; offset <= 2; offset++ {
+		for i := 0; i < 7; i++ {
+			stats := sampleSnapshot("bench-top-target", "JP", "")
+			wins := 20 + i
+			losses := 10
+			if i == 6 {
+				wins = 9
+				losses = 10
+			}
+			players = append(players, &model.BenchmarkPlayer{
+				SourceUserId:      "bench-top-source",
+				TargetUserId:      fmt.Sprintf("bench-top-%d-%d", offset, i),
+				FighterId:         fmt.Sprintf("Benchmark%d%d", offset, i),
+				Character:         "JP",
+				CharacterToolName: "jp",
+				RankOffset:        offset,
+				LeagueRank:        20 + offset,
+				LP:                30000 + i,
+				Wins:              wins,
+				Losses:            losses,
+				WinDiff:           wins - losses,
+				LastPlayAt:        1779859033,
+				Stats:             &stats,
+			})
+		}
+	}
+
+	if err := store.SaveBenchmarkPlayers(ctx, "bench-top-source", "JP", players); err != nil {
+		t.Fatalf("SaveBenchmarkPlayers: %v", err)
+	}
+	got, err := store.GetBenchmarkPlayers(ctx, "bench-top-source", "JP")
+	if err != nil {
+		t.Fatalf("GetBenchmarkPlayers: %v", err)
+	}
+	if len(got) != 10 {
+		t.Fatalf("benchmark rows = %d, want 10", len(got))
+	}
+	counts := map[int]int{}
+	for _, row := range got {
+		counts[row.RankOffset]++
+		if row.Wins <= row.Losses {
+			t.Fatalf("returned losing row: %+v", row)
+		}
+	}
+	if counts[1] != 5 || counts[2] != 5 {
+		t.Fatalf("rank offset counts = %v, want map[1:5 2:5]", counts)
+	}
+	if got[0].WinDiff < got[1].WinDiff || got[5].WinDiff < got[6].WinDiff {
+		t.Fatalf("rows are not sorted by win diff within rank: %v", got)
 	}
 }
 

@@ -12,6 +12,9 @@ type BenchmarkPlayer struct {
 	LP                int                `db:"lp" json:"lp"`
 	MR                int                `db:"mr" json:"mr"`
 	MRRanking         int                `db:"mr_ranking" json:"mrRanking"`
+	Wins              int                `db:"wins" json:"wins"`
+	Losses            int                `db:"losses" json:"losses"`
+	WinDiff           int                `db:"win_diff" json:"winDiff"`
 	LastPlayAt        int64              `db:"last_play_at" json:"lastPlayAt"`
 	FetchedAt         string             `db:"fetched_at" json:"fetchedAt"`
 	StatsJSON         string             `db:"stats_json" json:"-"`

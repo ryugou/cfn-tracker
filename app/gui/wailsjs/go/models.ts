@@ -47,6 +47,9 @@ export namespace model {
 	    lp: number;
 	    mr: number;
 	    mrRanking: number;
+	    wins: number;
+	    losses: number;
+	    winDiff: number;
 	    lastPlayAt: number;
 	    fetchedAt: string;
 	    stats?: PlayStatsSnapshot;
