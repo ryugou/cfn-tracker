@@ -4,6 +4,8 @@ import {model} from '../models';
 
 export function GenerateAdviceComparison(arg1:string,arg2:string):Promise<model.AdviceRun>;
 
+export function GetAdviceRuns(arg1:string,arg2:string,arg3:number):Promise<Array<model.AdviceRun>>;
+
 export function GetAppVersion():Promise<string>;
 
 export function GetBenchmarkComparison(arg1:string,arg2:string):Promise<model.BenchmarkComparison>;

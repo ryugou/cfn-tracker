@@ -7,6 +7,7 @@ import { TrackingMachineContext } from '@/state/tracking-machine'
 import { AuthMachineContext } from '@/state/auth-machine'
 import {
   GenerateAdviceComparison,
+  GetAdviceRuns,
   GetLatestAdviceRun,
   GetPlayStatsCharacters,
   GetUsers,
@@ -23,6 +24,7 @@ export function AdvicePage() {
   const [selectedUser, setSelectedUser] = React.useState('')
   const [selectedChar, setSelectedChar] = React.useState('')
   const [run, setRun] = React.useState<model.AdviceRun | null>(null)
+  const [runs, setRuns] = React.useState<model.AdviceRun[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -62,10 +64,14 @@ export function AdvicePage() {
     if (!selectedUser || !selectedChar) return
     let active = true
     setLoading(true)
-    GetLatestAdviceRun(selectedUser, selectedChar)
-      .then(data => {
+    Promise.all([
+      GetLatestAdviceRun(selectedUser, selectedChar),
+      GetAdviceRuns(selectedUser, selectedChar, 20)
+    ])
+      .then(([latest, history]) => {
         if (!active) return
-        setRun(data ?? null)
+        setRuns(history ?? [])
+        setRun(latest ?? null)
         setError(null)
       })
       .catch(e => active && setError(String(e)))
@@ -81,6 +87,7 @@ export function AdvicePage() {
     GenerateAdviceComparison(selectedUser, selectedChar)
       .then(data => {
         setRun(data)
+        setRuns(current => [data, ...current.filter(item => item.id !== data.id)])
         setError(null)
       })
       .catch(e => setError(String(e)))
@@ -152,6 +159,29 @@ export function AdvicePage() {
               <Summary label='対象' value={`${run.character} / 直近${run.inputWindow}件`} />
               <Summary label='基準スナップショット' value={run.snapshotAt || '—'} />
             </div>
+            {runs.length > 0 && (
+              <div className='mb-4 rounded border border-white/10 bg-zinc-900/35 p-3'>
+                <div className='mb-2 text-xs text-white/50'>履歴</div>
+                <div className='flex gap-2 overflow-x-auto pb-1'>
+                  {runs.map(item => (
+                    <button
+                      key={item.id}
+                      className={`min-w-[180px] rounded px-3 py-2 text-left text-xs ${
+                        item.id === run.id
+                          ? 'bg-cyan-400/20 text-cyan-100'
+                          : 'bg-white/8 text-white/70 hover:bg-white/12'
+                      }`}
+                      onClick={() => setRun(item)}
+                    >
+                      <div className='font-medium'>{item.createdAt || '—'}</div>
+                      <div className='mt-1 text-white/45'>
+                        {item.character} / {item.candidates?.length ?? 0}件
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className='grid gap-4 xl:grid-cols-2'>
               {run.candidates?.map(candidate => (
                 <AdviceCard

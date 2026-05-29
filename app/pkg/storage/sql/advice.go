@@ -78,6 +78,31 @@ func (s *Storage) GetLatestAdviceRun(ctx context.Context, userId, character stri
 	return rows[0], nil
 }
 
+func (s *Storage) GetAdviceRuns(
+	ctx context.Context,
+	userId, character string,
+	limit int,
+) ([]*model.AdviceRun, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows := []*model.AdviceRun{}
+	if err := s.db.SelectContext(ctx, &rows, `
+		SELECT * FROM advice_runs
+		WHERE user_id = ? AND character = ?
+		ORDER BY created_at DESC, id DESC
+		LIMIT ?
+	`, userId, character, limit); err != nil {
+		return nil, fmt.Errorf("select advice runs: %w", err)
+	}
+	for _, row := range rows {
+		if err := s.loadAdviceCandidates(ctx, row); err != nil {
+			return nil, err
+		}
+	}
+	return rows, nil
+}
+
 func (s *Storage) SaveAdviceFeedback(ctx context.Context, fb model.AdviceFeedback) error {
 	if _, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO advice_feedback (run_id, mode, rating, specificity, usefulness, trust, comment)

@@ -99,6 +99,14 @@ func (ch *CommandHandler) GetLatestAdviceRun(userId, character string) (*model.A
 	return run, nil
 }
 
+func (ch *CommandHandler) GetAdviceRuns(userId, character string, limit int) ([]*model.AdviceRun, error) {
+	runs, err := ch.sqlDb.GetAdviceRuns(context.Background(), userId, character, limit)
+	if err != nil {
+		return nil, model.WrapError(model.ErrGetPlayStats, err)
+	}
+	return runs, nil
+}
+
 func (ch *CommandHandler) SaveAdviceFeedback(runId int64, mode string, rating, specificity, usefulness, trust int, comment string) error {
 	err := ch.sqlDb.SaveAdviceFeedback(context.Background(), model.AdviceFeedback{
 		RunId:       runId,
