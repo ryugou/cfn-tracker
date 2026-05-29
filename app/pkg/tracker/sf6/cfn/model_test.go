@@ -33,6 +33,9 @@ func TestPlayPageUnmarshal(t *testing.T) {
 	if pp.FighterBannerInfo.FavoriteCharacterName == "" {
 		t.Errorf("FavoriteCharacterName is empty")
 	}
+	if len(pp.Play.CharacterWinRates) == 0 {
+		t.Fatalf("CharacterWinRates is empty")
+	}
 
 	// Equality assertions against known fixture values catch json-tag regressions.
 	if pp.Play.BattleStats.RankMatchPlayCount != 59 {

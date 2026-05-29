@@ -758,8 +758,16 @@ type CommonProps struct {
 }
 
 type PlayProps struct {
-	BattleStats BattleStats `json:"battle_stats"`
-	BaseInfo    BaseInfo    `json:"base_info"`
+	BattleStats       BattleStats        `json:"battle_stats"`
+	BaseInfo          BaseInfo           `json:"base_info"`
+	CharacterWinRates []CharacterWinRate `json:"character_win_rates"`
+}
+
+type CharacterWinRate struct {
+	BattleCount       int    `json:"battle_count"`
+	CharacterName     string `json:"character_name"`
+	CharacterToolName string `json:"character_tool_name"`
+	WinCount          int    `json:"win_count"`
 }
 
 // BattleStats is the over-last-100-ranked-matches summary for the player's

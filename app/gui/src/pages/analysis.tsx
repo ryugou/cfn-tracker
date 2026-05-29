@@ -196,7 +196,7 @@ export function AnalysisPage() {
   const refresh = React.useCallback(() => {
     if (!selectedUser || !selectedChar) return
     setRefreshing(true)
-    setRefreshProgress({ userId: selectedUser, character: selectedChar, completed: 0, total: 10 })
+    setRefreshProgress({ userId: selectedUser, character: selectedChar, completed: 0, total: 40 })
     RefreshBenchmarkPlayers(selectedUser, selectedChar)
       .then(() => GetBenchmarkComparison(selectedUser, selectedChar))
       .then(data => {
@@ -453,6 +453,8 @@ function PlayersTable({ players }: { players: model.BenchmarkPlayer[] }) {
             <th className='min-w-[92px] px-3 py-2'>{t('analysisGroup')}</th>
             <th className='min-w-[70px] px-3 py-2 text-right'>LP</th>
             <th className='min-w-[70px] px-3 py-2 text-right'>MR</th>
+            <th className='min-w-[88px] px-3 py-2 text-right'>勝敗</th>
+            <th className='min-w-[70px] px-3 py-2 text-right'>差</th>
             {metrics.map(metric => (
               <th key={metric.key} className='min-w-[112px] px-3 py-2 text-right'>
                 {t(metric.labelKey)}
@@ -474,6 +476,8 @@ function PlayersTable({ players }: { players: model.BenchmarkPlayer[] }) {
               </td>
               <td className='px-3 py-2 text-right tabular-nums'>{player.lp}</td>
               <td className='px-3 py-2 text-right tabular-nums'>{player.mr || '—'}</td>
+              <td className='px-3 py-2 text-right tabular-nums'>{player.wins}-{player.losses}</td>
+              <td className='px-3 py-2 text-right tabular-nums'>{player.winDiff > 0 ? `+${player.winDiff}` : player.winDiff}</td>
               {metrics.map(metric => (
                 <td key={metric.key} className='px-3 py-2 text-right tabular-nums'>
                   {metric.format(numeric(player.stats, metric.key))}

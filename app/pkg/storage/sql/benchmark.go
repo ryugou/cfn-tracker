@@ -8,6 +8,8 @@ import (
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
 
+const benchmarkSamplePlayersPerRank = 5
+
 func (s *Storage) SaveBenchmarkPlayers(
 	ctx context.Context,
 	sourceUserId, character string,
@@ -40,11 +42,11 @@ func (s *Storage) SaveBenchmarkPlayers(
 		_, err := tx.NamedExecContext(ctx, `
 			INSERT INTO benchmark_players (
 				source_user_id, target_user_id, fighter_id, character, character_tool_name,
-				rank_offset, league_rank, lp, mr, mr_ranking, last_play_at,
+				rank_offset, league_rank, lp, mr, mr_ranking, wins, losses, win_diff, last_play_at,
 				fetched_at, stats_json, last_error
 			) VALUES (
 				:source_user_id, :target_user_id, :fighter_id, :character, :character_tool_name,
-				:rank_offset, :league_rank, :lp, :mr, :mr_ranking, :last_play_at,
+				:rank_offset, :league_rank, :lp, :mr, :mr_ranking, :wins, :losses, :win_diff, :last_play_at,
 				DATETIME('NOW'), :stats_json, :last_error
 			)
 		`, player)
@@ -65,10 +67,27 @@ func (s *Storage) GetBenchmarkPlayers(
 ) ([]*model.BenchmarkPlayer, error) {
 	rows := []*model.BenchmarkPlayer{}
 	if err := s.db.SelectContext(ctx, &rows, `
-		SELECT * FROM benchmark_players
-		WHERE source_user_id = ? AND character = ?
-		ORDER BY rank_offset ASC, mr DESC, lp DESC, fighter_id ASC
-	`, sourceUserId, character); err != nil {
+		WITH ranked AS (
+			SELECT
+				id,
+				ROW_NUMBER() OVER (
+					PARTITION BY rank_offset
+					ORDER BY win_diff DESC, wins DESC, mr DESC, lp DESC, fighter_id ASC
+				) AS sample_rank
+			FROM benchmark_players
+			WHERE source_user_id = ?
+				AND character = ?
+				AND last_error = ''
+				AND stats_json IS NOT NULL
+				AND stats_json != ''
+				AND wins > losses
+		)
+		SELECT b.*
+		FROM benchmark_players b
+		INNER JOIN ranked r ON r.id = b.id
+		WHERE r.sample_rank <= ?
+		ORDER BY b.rank_offset ASC, r.sample_rank ASC
+	`, sourceUserId, character, benchmarkSamplePlayersPerRank); err != nil {
 		return nil, fmt.Errorf("select benchmark players: %w", err)
 	}
 	for _, row := range rows {

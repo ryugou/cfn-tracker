@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	benchmarkPlayersPerRank = 5
-	benchmarkSearchPages    = 3
-	benchmarkRefreshTimeout = 2 * time.Minute
-	benchmarkPlayerTimeout  = 20 * time.Second
+	benchmarkPlayersPerRank    = 5
+	benchmarkCandidatesPerRank = 20
+	benchmarkSearchPages       = 3
+	benchmarkRefreshTimeout    = 10 * time.Minute
+	benchmarkPlayerTimeout     = 20 * time.Second
+	benchmarkRequestDelay      = 750 * time.Millisecond
 )
 
 type BenchmarkRefreshProgress struct {
@@ -58,10 +60,10 @@ func (ch *CommandHandler) RefreshBenchmarkPlayers(userId, character string) ([]*
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
 	}
 
-	players := make([]*model.BenchmarkPlayer, 0, benchmarkPlayersPerRank*2)
+	players := make([]*model.BenchmarkPlayer, 0, benchmarkCandidatesPerRank*2)
 	timedOut := false
 	completed := 0
-	total := benchmarkPlayersPerRank * 2
+	total := len(candidatesByOffset[1]) + len(candidatesByOffset[2])
 	ch.emitBenchmarkRefreshProgress(userId, characterName, completed, total)
 	for _, offset := range []int{1, 2} {
 		for _, candidate := range candidatesByOffset[offset] {
@@ -78,8 +80,14 @@ func (ch *CommandHandler) RefreshBenchmarkPlayers(userId, character string) ([]*
 					timedOut = true
 					break
 				}
+				if completed < total && !sleepWithContext(ctx, benchmarkRequestDelay) {
+					timedOut = true
+					break
+				}
 				continue
 			}
+			player.Wins, player.Losses = benchmarkWinsLosses(pp, characterToolName)
+			player.WinDiff = player.Wins - player.Losses
 			res := &sf6.PlayStatsResult{
 				Character: pp.FighterBannerInfo.FavoriteCharacterName,
 				Stats:     &pp.Play.BattleStats,
@@ -88,6 +96,10 @@ func (ch *CommandHandler) RefreshBenchmarkPlayers(userId, character string) ([]*
 			stats := buildSnapshot(player.TargetUserId, res, "")
 			player.Stats = &stats
 			players = append(players, player)
+			if completed < total && !sleepWithContext(ctx, benchmarkRequestDelay) {
+				timedOut = true
+				break
+			}
 		}
 		if timedOut {
 			break
@@ -166,8 +178,8 @@ func (ch *CommandHandler) findBenchmarkCandidates(
 		}
 		used := map[string]bool{selfId: true}
 		return map[int][]cfn.FighterBanner{
-			1: selectClosestMR(filtered, selfMR+100, used),
-			2: selectClosestMR(filtered, selfMR+200, used),
+			1: selectClosestMR(filtered, selfMR+100, used, benchmarkCandidatesPerRank),
+			2: selectClosestMR(filtered, selfMR+200, used, benchmarkCandidatesPerRank),
 		}, nil
 	}
 
@@ -192,7 +204,7 @@ func (ch *CommandHandler) findBenchmarkCandidates(
 			}
 			return candidates[i].FavoriteCharacterLeagueInfo.LeaguePoint > candidates[j].FavoriteCharacterLeagueInfo.LeaguePoint
 		})
-		selected := make([]cfn.FighterBanner, 0, benchmarkPlayersPerRank)
+		selected := make([]cfn.FighterBanner, 0, benchmarkCandidatesPerRank)
 		for _, candidate := range candidates {
 			id := strconv.FormatInt(candidate.PersonalInfo.ShortID, 10)
 			if used[id] {
@@ -200,7 +212,7 @@ func (ch *CommandHandler) findBenchmarkCandidates(
 			}
 			selected = append(selected, candidate)
 			used[id] = true
-			if len(selected) >= benchmarkPlayersPerRank {
+			if len(selected) >= benchmarkCandidatesPerRank {
 				break
 			}
 		}
@@ -223,7 +235,7 @@ func nextLeagueRank(rank int) int {
 	return next
 }
 
-func selectClosestMR(candidates []cfn.FighterBanner, targetMR int, used map[string]bool) []cfn.FighterBanner {
+func selectClosestMR(candidates []cfn.FighterBanner, targetMR int, used map[string]bool, limit int) []cfn.FighterBanner {
 	sort.Slice(candidates, func(i, j int) bool {
 		mi := candidates[i].FavoriteCharacterLeagueInfo.MasterRating
 		mj := candidates[j].FavoriteCharacterLeagueInfo.MasterRating
@@ -235,7 +247,7 @@ func selectClosestMR(candidates []cfn.FighterBanner, targetMR int, used map[stri
 		return di < dj
 	})
 
-	selected := make([]cfn.FighterBanner, 0, benchmarkPlayersPerRank)
+	selected := make([]cfn.FighterBanner, 0, limit)
 	for _, candidate := range candidates {
 		id := strconv.FormatInt(candidate.PersonalInfo.ShortID, 10)
 		if used[id] {
@@ -243,11 +255,22 @@ func selectClosestMR(candidates []cfn.FighterBanner, targetMR int, used map[stri
 		}
 		selected = append(selected, candidate)
 		used[id] = true
-		if len(selected) >= benchmarkPlayersPerRank {
+		if len(selected) >= limit {
 			break
 		}
 	}
 	return selected
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func absInt(n int) int {
@@ -295,6 +318,23 @@ func benchmarkPlayerFromCandidate(sourceUserId, character string, rankOffset int
 		MRRanking:         league.MasterRatingRanking,
 		LastPlayAt:        candidate.LastPlayAt,
 	}
+}
+
+func benchmarkWinsLosses(pp *cfn.PlayPageProps, characterToolName string) (int, int) {
+	if pp == nil {
+		return 0, 0
+	}
+	for _, row := range pp.Play.CharacterWinRates {
+		if strings.EqualFold(row.CharacterToolName, characterToolName) {
+			wins := row.WinCount
+			losses := row.BattleCount - row.WinCount
+			if losses < 0 {
+				losses = 0
+			}
+			return wins, losses
+		}
+	}
+	return 0, 0
 }
 
 func benchmarkAverages(players []*model.BenchmarkPlayer) []model.BenchmarkRankAverage {
