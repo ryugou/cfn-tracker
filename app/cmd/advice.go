@@ -291,6 +291,9 @@ func requestAdviceLLM(
 	if strings.TrimSpace(apiKey) == "" {
 		return nil, fmt.Errorf("%s is empty", anthropicAPIKeyEnvKey)
 	}
+	if strings.HasPrefix(strings.TrimSpace(apiKey), "op://") {
+		return nil, fmt.Errorf("%s is still a 1Password reference; startup resolution has not completed or failed", anthropicAPIKeyEnvKey)
+	}
 	system := adviceSystemPrompt(mode)
 	user, err := adviceUserPrompt(mode, adviceCtx, graphEvidence)
 	if err != nil {

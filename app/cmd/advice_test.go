@@ -196,3 +196,20 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 		t.Fatalf("expected llm model evidence, got %#v", candidate.Evidence)
 	}
 }
+
+func TestRequestAdviceLLMRejectsUnresolved1PasswordRef(t *testing.T) {
+	_, err := requestAdviceLLM(
+		context.Background(),
+		model.AdviceModeDBOnly,
+		"claude-sonnet-4-6",
+		"op://ai-agents/CFN-Tracker/credential",
+		adviceContext{},
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected unresolved 1Password reference error")
+	}
+	if !strings.Contains(err.Error(), "still a 1Password reference") {
+		t.Fatalf("err = %v", err)
+	}
+}
