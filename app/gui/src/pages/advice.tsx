@@ -25,7 +25,7 @@ export function AdvicePage() {
   const [selectedChar, setSelectedChar] = React.useState('')
   const [run, setRun] = React.useState<model.AdviceRun | null>(null)
   const [runs, setRuns] = React.useState<model.AdviceRun[]>([])
-  const [selectedMode, setSelectedMode] = React.useState('graph_rag')
+  const [selectedMode, setSelectedMode] = React.useState('punk_record_opus_4_6')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -149,7 +149,7 @@ export function AdvicePage() {
 
         {selectedChar && !loading && !run && (
           <p className='mt-12 text-center text-white/60'>
-            まだアドバイスがありません。生成するとPunk RecordとDB-onlyの候補を比較できます。
+            まだアドバイスがありません。生成するとPunkRecordとDB Onlyの候補を比較できます。
           </p>
         )}
 
@@ -243,15 +243,23 @@ function AdviceCandidateTabs({
 }
 
 function modeOrder(mode: string) {
-  if (mode === 'graph_rag') return 0
-  if (mode === 'db_only') return 1
-  return 2
+  if (mode === 'punk_record_opus_4_6') return 0
+  if (mode === 'punk_record_sonnet_4_6') return 1
+  if (mode === 'graph_rag') return 2
+  if (mode === 'db_only') return 3
+  return 4
 }
 
 function modeLabel(mode: string) {
-  if (mode === 'graph_rag') return 'Punk Record'
-  if (mode === 'db_only') return 'DB-only'
+  if (mode === 'punk_record_opus_4_6') return 'PunkRecord(Opus4.6)'
+  if (mode === 'punk_record_sonnet_4_6') return 'PunkRecord(Sonnet4.6)'
+  if (mode === 'graph_rag') return 'PunkRecord'
+  if (mode === 'db_only') return 'DB Only'
   return mode
+}
+
+function canEvaluate(mode: string) {
+  return mode !== 'db_only'
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
@@ -309,19 +317,21 @@ function AdviceCard({ runId, candidate }: { runId: number; candidate: model.Advi
         </div>
       </div>
 
-      <div className='mt-4 flex items-center gap-2 border-t border-white/10 pt-3'>
-        <span className='text-xs text-white/50'>評価</span>
-        {[1, 2, 3, 4, 5].map(rating => (
-          <button
-            key={rating}
-            className='h-8 w-8 rounded bg-white/10 text-sm hover:bg-white/20'
-            onClick={() => submitFeedback(rating)}
-          >
-            {rating}
-          </button>
-        ))}
-        {saved && <span className='text-xs text-emerald-300'>保存済み</span>}
-      </div>
+      {canEvaluate(candidate.mode) && (
+        <div className='mt-4 flex items-center gap-2 border-t border-white/10 pt-3'>
+          <span className='text-xs text-white/50'>評価</span>
+          {[1, 2, 3, 4, 5].map(rating => (
+            <button
+              key={rating}
+              className='h-8 w-8 rounded bg-white/10 text-sm hover:bg-white/20'
+              onClick={() => submitFeedback(rating)}
+            >
+              {rating}
+            </button>
+          ))}
+          {saved && <span className='text-xs text-emerald-300'>保存済み</span>}
+        </div>
+      )}
     </section>
   )
 }

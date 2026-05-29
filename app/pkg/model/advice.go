@@ -3,8 +3,10 @@ package model
 type AdviceMode string
 
 const (
-	AdviceModeDBOnly   AdviceMode = "db_only"
-	AdviceModeGraphRAG AdviceMode = "graph_rag"
+	AdviceModeDBOnly             AdviceMode = "db_only"
+	AdviceModeGraphRAG           AdviceMode = "graph_rag"
+	AdviceModePunkRecordOpus46   AdviceMode = "punk_record_opus_4_6"
+	AdviceModePunkRecordSonnet46 AdviceMode = "punk_record_sonnet_4_6"
 )
 
 type AdviceRun struct {
