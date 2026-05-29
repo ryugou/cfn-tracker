@@ -25,6 +25,7 @@ export function AdvicePage() {
   const [selectedChar, setSelectedChar] = React.useState('')
   const [run, setRun] = React.useState<model.AdviceRun | null>(null)
   const [runs, setRuns] = React.useState<model.AdviceRun[]>([])
+  const [selectedMode, setSelectedMode] = React.useState('graph_rag')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -148,7 +149,7 @@ export function AdvicePage() {
 
         {selectedChar && !loading && !run && (
           <p className='mt-12 text-center text-white/60'>
-            まだアドバイスがありません。生成するとDB-onlyとGraphRAGの候補を比較できます。
+            まだアドバイスがありません。生成するとPunk RecordとDB-onlyの候補を比較できます。
           </p>
         )}
 
@@ -182,20 +183,75 @@ export function AdvicePage() {
                 </div>
               </div>
             )}
-            <div className='grid gap-4 xl:grid-cols-2'>
-              {run.candidates?.map(candidate => (
-                <AdviceCard
-                  key={`${candidate.mode}-${candidate.id}`}
-                  runId={run.id}
-                  candidate={candidate}
-                />
-              ))}
-            </div>
+            <AdviceCandidateTabs
+              runId={run.id}
+              candidates={run.candidates ?? []}
+              selectedMode={selectedMode}
+              onSelectMode={setSelectedMode}
+            />
           </>
         )}
       </div>
     </Page.Root>
   )
+}
+
+function AdviceCandidateTabs({
+  runId,
+  candidates,
+  selectedMode,
+  onSelectMode
+}: {
+  runId: number
+  candidates: model.AdviceCandidate[]
+  selectedMode: string
+  onSelectMode: (mode: string) => void
+}) {
+  const orderedCandidates = [...candidates].sort((a, b) => modeOrder(a.mode) - modeOrder(b.mode))
+  const activeCandidate =
+    orderedCandidates.find(candidate => candidate.mode === selectedMode) ?? orderedCandidates[0]
+
+  if (!activeCandidate) return null
+
+  return (
+    <div>
+      <div className='mb-3 flex border-b border-white/10'>
+        {orderedCandidates.map(candidate => {
+          const active = candidate.mode === activeCandidate.mode
+          return (
+            <button
+              key={`${candidate.mode}-${candidate.id}`}
+              className={`border-b-2 px-4 py-2 text-sm font-medium ${
+                active
+                  ? 'border-cyan-300 text-cyan-100'
+                  : 'border-transparent text-white/55 hover:text-white/80'
+              }`}
+              onClick={() => onSelectMode(candidate.mode)}
+            >
+              {modeLabel(candidate.mode)}
+            </button>
+          )
+        })}
+      </div>
+      <AdviceCard
+        key={`${activeCandidate.mode}-${activeCandidate.id}`}
+        runId={runId}
+        candidate={activeCandidate}
+      />
+    </div>
+  )
+}
+
+function modeOrder(mode: string) {
+  if (mode === 'graph_rag') return 0
+  if (mode === 'db_only') return 1
+  return 2
+}
+
+function modeLabel(mode: string) {
+  if (mode === 'graph_rag') return 'Punk Record'
+  if (mode === 'db_only') return 'DB-only'
+  return mode
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
@@ -209,7 +265,6 @@ function Summary({ label, value }: { label: string; value: string }) {
 
 function AdviceCard({ runId, candidate }: { runId: number; candidate: model.AdviceCandidate }) {
   const [saved, setSaved] = React.useState(false)
-  const modeLabel = candidate.mode === 'graph_rag' ? 'GraphRAG' : 'DB-only'
   const submitFeedback = (rating: number) => {
     SaveAdviceFeedback(runId, candidate.mode, rating, rating, rating, rating, '')
       .then(() => setSaved(true))
@@ -221,7 +276,7 @@ function AdviceCard({ runId, candidate }: { runId: number; candidate: model.Advi
       <div className='mb-3 flex items-start justify-between gap-3'>
         <div>
           <div className='text-xs font-medium tracking-wide text-cyan-200 uppercase'>
-            {modeLabel}
+            {modeLabel(candidate.mode)}
           </div>
           <h2 className='mt-1 text-xl font-semibold'>{candidate.theme}</h2>
         </div>
