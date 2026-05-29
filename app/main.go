@@ -255,6 +255,10 @@ func main() {
 				slog.Debug("[FE]", slog.String("event", eventName), slog.Any("data", optionalData))
 				runtime.EventsEmit(ctx, eventName, optionalData...)
 			})
+			cmdHandler.EventEmitter = func(eventName string, optionalData ...interface{}) {
+				slog.Debug("[FE]", slog.String("event", eventName), slog.Any("data", optionalData))
+				runtime.EventsEmit(ctx, eventName, optionalData...)
+			}
 		},
 		OnStartup: func(ctx context.Context) {
 			go browserSrcServer.Start(ctx, &cfg)

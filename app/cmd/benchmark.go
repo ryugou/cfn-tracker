@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 	"github.com/williamsjokvist/cfn-tracker/pkg/tracker/sf6"
@@ -16,10 +17,21 @@ import (
 const (
 	benchmarkPlayersPerRank = 5
 	benchmarkSearchPages    = 3
+	benchmarkRefreshTimeout = 2 * time.Minute
+	benchmarkPlayerTimeout  = 20 * time.Second
 )
 
+type BenchmarkRefreshProgress struct {
+	UserId    string `json:"userId"`
+	Character string `json:"character"`
+	Completed int    `json:"completed"`
+	Total     int    `json:"total"`
+}
+
 func (ch *CommandHandler) RefreshBenchmarkPlayers(userId, character string) ([]*model.BenchmarkPlayer, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), benchmarkRefreshTimeout)
+	defer cancel()
+
 	if ch.cfnClient == nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, fmt.Errorf("cfn client is not configured"))
 	}
@@ -47,13 +59,25 @@ func (ch *CommandHandler) RefreshBenchmarkPlayers(userId, character string) ([]*
 	}
 
 	players := make([]*model.BenchmarkPlayer, 0, benchmarkPlayersPerRank*2)
+	timedOut := false
+	completed := 0
+	total := benchmarkPlayersPerRank * 2
+	ch.emitBenchmarkRefreshProgress(userId, characterName, completed, total)
 	for _, offset := range []int{1, 2} {
 		for _, candidate := range candidatesByOffset[offset] {
 			player := benchmarkPlayerFromCandidate(userId, characterName, offset, candidate)
-			pp, err := ch.cfnClient.GetPlayStats(ctx, player.TargetUserId)
+			playerCtx, playerCancel := context.WithTimeout(ctx, benchmarkPlayerTimeout)
+			pp, err := ch.cfnClient.GetPlayStats(playerCtx, player.TargetUserId)
+			playerCancel()
+			completed++
+			ch.emitBenchmarkRefreshProgress(userId, characterName, completed, total)
 			if err != nil {
 				player.LastError = err.Error()
 				players = append(players, player)
+				if ctx.Err() != nil {
+					timedOut = true
+					break
+				}
 				continue
 			}
 			res := &sf6.PlayStatsResult{
@@ -65,12 +89,28 @@ func (ch *CommandHandler) RefreshBenchmarkPlayers(userId, character string) ([]*
 			player.Stats = &stats
 			players = append(players, player)
 		}
+		if timedOut {
+			break
+		}
 	}
 
-	if err := ch.sqlDb.SaveBenchmarkPlayers(ctx, userId, characterName, players); err != nil {
+	dbCtx := context.Background()
+	if err := ch.sqlDb.SaveBenchmarkPlayers(dbCtx, userId, characterName, players); err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
 	}
-	return ch.sqlDb.GetBenchmarkPlayers(ctx, userId, characterName)
+	return ch.sqlDb.GetBenchmarkPlayers(dbCtx, userId, characterName)
+}
+
+func (ch *CommandHandler) emitBenchmarkRefreshProgress(userId, character string, completed, total int) {
+	if ch.EventEmitter == nil {
+		return
+	}
+	ch.EventEmitter("benchmark-refresh-progress", BenchmarkRefreshProgress{
+		UserId:    userId,
+		Character: character,
+		Completed: completed,
+		Total:     total,
+	})
 }
 
 func (ch *CommandHandler) GetBenchmarkPlayers(userId, character string) ([]*model.BenchmarkPlayer, error) {

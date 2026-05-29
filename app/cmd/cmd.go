@@ -20,10 +20,11 @@ import (
 
 // The CommandHandler is the interface between the GUI and the core
 type CommandHandler struct {
-	sqlDb     *sql.Storage
-	cfgDb     *cfgDb.Storage
-	cfnClient cfn.CFNClient
-	cfg       *config.BuildConfig
+	sqlDb        *sql.Storage
+	cfgDb        *cfgDb.Storage
+	cfnClient    cfn.CFNClient
+	cfg          *config.BuildConfig
+	EventEmitter EventEmitFn
 }
 
 func NewCommandHandler(sqlDb *sql.Storage, cfgDb *cfgDb.Storage, txtDb *txt.Storage, cfnClient cfn.CFNClient, cfg *config.BuildConfig) *CommandHandler {
