@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -170,6 +171,7 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 		model.AdviceModeDBOnly,
 		"claude-sonnet-4-6",
 		"test-key",
+		nil,
 		adviceContext{
 			UserID:      "u1",
 			Character:   "JP",
@@ -203,6 +205,7 @@ func TestRequestAdviceLLMRejectsUnresolved1PasswordRef(t *testing.T) {
 		model.AdviceModeDBOnly,
 		"claude-sonnet-4-6",
 		"op://ai-agents/CFN-Tracker/credential",
+		nil,
 		adviceContext{},
 		nil,
 	)
@@ -210,6 +213,24 @@ func TestRequestAdviceLLMRejectsUnresolved1PasswordRef(t *testing.T) {
 		t.Fatal("expected unresolved 1Password reference error")
 	}
 	if !strings.Contains(err.Error(), "still a 1Password reference") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRequestAdviceLLMReturnsStartupResolutionError(t *testing.T) {
+	_, err := requestAdviceLLM(
+		context.Background(),
+		model.AdviceModeDBOnly,
+		"claude-sonnet-4-6",
+		"op://ai-agents/CFN-Tracker/credential",
+		fmt.Errorf("startup resolution failed"),
+		adviceContext{},
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected startup resolution error")
+	}
+	if !strings.Contains(err.Error(), "startup resolution failed") {
 		t.Fatalf("err = %v", err)
 	}
 }

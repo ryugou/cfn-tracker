@@ -161,6 +161,12 @@ func main() {
 		}
 	}()
 
+	if !isWailsBindings {
+		if err := cmd.InitializeAdviceLLMConfig(context.Background()); err != nil {
+			closeWithError(fmt.Errorf("initialize advice llm config: %w", err))
+		}
+	}
+
 	appBrowser, err := browser.NewBrowser(cfg.Headless)
 	if err != nil {
 		closeWithError(fmt.Errorf("launch browser: %w", err))
@@ -269,11 +275,6 @@ func main() {
 		},
 		OnStartup: func(ctx context.Context) {
 			go browserSrcServer.Start(ctx, &cfg)
-			go func() {
-				if err := cmd.InitializeAdviceLLMConfig(ctx); err != nil {
-					slog.Warn("initialize advice llm config", slog.Any("error", err))
-				}
-			}()
 		},
 		OnShutdown: func(_ context.Context) {
 			appBrowser.Page.Browser().Close()
