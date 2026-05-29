@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -630,11 +631,19 @@ func round2(value float64) float64 {
 func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character, theme, summary string) []model.AdviceEvidence {
 	target := os.Getenv("VEGAPUNK_GRPC_TARGET")
 	if target == "" {
-		target = "vegapunk:6840"
+		target = "vegapunk.local:6840"
 	}
 	schema := os.Getenv("VEGAPUNK_SCHEMA")
 	if schema == "" {
 		schema = "sf6-advice"
+	}
+	protoPath := os.Getenv("VEGAPUNK_PROTO")
+	if protoPath == "" {
+		protoPath = "/Users/ryugo/Developer/src/AI-Project/vegapunk/proto/graphrag.proto"
+	}
+	protoImportPath := os.Getenv("VEGAPUNK_PROTO_IMPORT_PATH")
+	if protoImportPath == "" {
+		protoImportPath = filepath.Dir(protoPath)
 	}
 	query := fmt.Sprintf("SF6 %s %s %s", character, theme, summary)
 	req := map[string]any{
@@ -645,7 +654,7 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		"limit":  5,
 	}
 	body, _ := json.Marshal(req)
-	args := []string{"-plaintext", "-d", string(body)}
+	args := []string{"-plaintext", "-import-path", protoImportPath, "-proto", filepath.Base(protoPath), "-d", string(body)}
 	if token := os.Getenv("VEGAPUNK_TOKEN"); token != "" {
 		args = append(args, "-H", "authorization: Bearer "+token)
 	}
@@ -661,6 +670,13 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		text := strings.TrimSpace(stderr.String())
 		if text == "" {
 			text = err.Error()
+		}
+		if strings.Contains(text, "schema error: schema") && strings.Contains(text, "not found") {
+			return []model.AdviceEvidence{{
+				Source: "vegapunk",
+				Title:  "PunkRecord schema未作成",
+				Text:   fmt.Sprintf("VEGAPUNK_SCHEMA=%s はまだvegapunk側に作成されていません。SF6攻略知識をingestするschema作成後に検索結果が使われます。", schema),
+			}}
 		}
 		return []model.AdviceEvidence{{Source: "vegapunk", Title: "GraphRAG検索未接続", Text: text}}
 	}
