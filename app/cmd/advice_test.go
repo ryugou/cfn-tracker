@@ -3,12 +3,14 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
@@ -127,6 +129,8 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 		context.Background(),
 		model.AdviceModeDBOnly,
 		"claude-sonnet-4-6",
+		"test-key",
+		nil,
 		adviceContext{
 			UserID:      "u1",
 			Character:   "JP",
@@ -151,5 +155,56 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 	}
 	if !foundModelEvidence {
 		t.Fatalf("expected llm model evidence, got %#v", candidate.Evidence)
+	}
+}
+
+func TestGenerateAdviceComparisonLoadsAnthropicAPIKeyOnce(t *testing.T) {
+	var keyLoads int32
+	originalLoader := loadAnthropicAPIKeyFunc
+	loadAnthropicAPIKeyFunc = func(context.Context) (string, error) {
+		atomic.AddInt32(&keyLoads, 1)
+		return "", fmt.Errorf("test key load failure")
+	}
+	t.Cleanup(func() {
+		loadAnthropicAPIKeyFunc = originalLoader
+	})
+
+	if atomic.LoadInt32(&keyLoads) != 0 {
+		t.Fatalf("keyLoads before generation = %d", keyLoads)
+	}
+
+	apiKey, apiKeyErr := loadAnthropicAPIKeyFunc(context.Background())
+	fallback := buildDBOnlyAdvice([]adviceSignal{
+		{
+			key:         "received_drive_impact",
+			label:       "DI被弾",
+			self:        2,
+			benchmark:   1,
+			trend:       0,
+			higherGood:  false,
+			severity:    1,
+			description: "相手のドライブインパクトを受ける頻度",
+		},
+	})
+	ch := &CommandHandler{}
+	for _, mode := range []model.AdviceMode{
+		model.AdviceModeDBOnly,
+		model.AdviceModePunkRecordSonnet46,
+		model.AdviceModePunkRecordOpus46,
+	} {
+		_ = ch.generateAdviceWithLLM(
+			context.Background(),
+			mode,
+			"claude-sonnet-4-6",
+			apiKey,
+			apiKeyErr,
+			adviceContext{},
+			nil,
+			fallback,
+		)
+	}
+
+	if keyLoads != 1 {
+		t.Fatalf("keyLoads = %d, want 1", keyLoads)
 	}
 }

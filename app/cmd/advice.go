@@ -33,6 +33,7 @@ const (
 )
 
 var adviceHTTPClient = http.DefaultClient
+var loadAnthropicAPIKeyFunc = loadAnthropicAPIKey
 
 type adviceContext struct {
 	UserID         string                  `json:"userId"`
@@ -89,14 +90,15 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 	adviceCtx := buildAdviceContext(userId, character, latest, signals, len(players))
 	sonnetModel := adviceLLMModel(anthropicSonnetModelEnvKey, defaultAnthropicSonnetModel)
 	opusModel := adviceLLMModel(anthropicOpusModelEnvKey, defaultAnthropicOpusModel)
+	apiKey, apiKeyErr := loadAnthropicAPIKeyFunc(ctx)
 
 	dbFallback := buildDBOnlyAdvice(signals)
-	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, adviceCtx, nil, dbFallback)
+	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, apiKey, apiKeyErr, adviceCtx, nil, dbFallback)
 	graphEvidence := ch.searchVegapunkEvidence(ctx, character, dbCandidate.Theme, dbCandidate.Summary)
 	graphSonnetFallback := buildGraphRAGAdvice(signals, graphEvidence)
-	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, adviceCtx, graphEvidence, graphSonnetFallback)
+	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, apiKey, apiKeyErr, adviceCtx, graphEvidence, graphSonnetFallback)
 	graphOpusFallback := buildGraphRAGAdvice(signals, graphEvidence)
-	graphOpusCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordOpus46, opusModel, adviceCtx, graphEvidence, graphOpusFallback)
+	graphOpusCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordOpus46, opusModel, apiKey, apiKeyErr, adviceCtx, graphEvidence, graphOpusFallback)
 
 	run := &model.AdviceRun{
 		UserId:      userId,
@@ -257,12 +259,14 @@ func (ch *CommandHandler) generateAdviceWithLLM(
 	ctx context.Context,
 	mode model.AdviceMode,
 	modelName string,
+	apiKey string,
+	apiKeyErr error,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 	fallback *model.AdviceCandidate,
 ) *model.AdviceCandidate {
 	fallback.Mode = mode
-	candidate, err := requestAdviceLLM(ctx, mode, modelName, adviceCtx, graphEvidence)
+	candidate, err := requestAdviceLLM(ctx, mode, modelName, apiKey, apiKeyErr, adviceCtx, graphEvidence)
 	if err != nil {
 		fallback.Evidence = append(fallback.Evidence, model.AdviceEvidence{
 			Source: "llm",
@@ -282,12 +286,16 @@ func requestAdviceLLM(
 	ctx context.Context,
 	mode model.AdviceMode,
 	modelName string,
+	apiKey string,
+	apiKeyErr error,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 ) (*model.AdviceCandidate, error) {
-	apiKey, err := loadAnthropicAPIKey(ctx)
-	if err != nil {
-		return nil, err
+	if apiKeyErr != nil {
+		return nil, apiKeyErr
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, fmt.Errorf("%s is empty", anthropicAPIKeyEnvKey)
 	}
 	system := adviceSystemPrompt(mode)
 	user, err := adviceUserPrompt(mode, adviceCtx, graphEvidence)
