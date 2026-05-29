@@ -100,18 +100,12 @@ func init() {
 			CapIDPassword:     capIDPassword,
 			BrowserSourcePort: 4242,
 		}
-		if err := cmd.InitializeAdviceLLMConfig(context.Background()); err != nil {
-			slog.Warn("initialize advice llm config", slog.Any("error", err))
-		}
 		return
 	}
 	if err := envconfig.Process("", &cfg); err != nil {
 		log.Fatalf("process envconfig: %v", err)
 	}
 	cfg.AppVersion = wailsCfg.Info.ProductVersion
-	if err := cmd.InitializeAdviceLLMConfig(context.Background()); err != nil {
-		slog.Warn("initialize advice llm config", slog.Any("error", err))
-	}
 }
 
 func envFilePath() string {
@@ -166,6 +160,12 @@ func main() {
 			logFile.Close()
 		}
 	}()
+
+	if !isWailsBindings {
+		if err := cmd.InitializeAdviceLLMConfig(context.Background()); err != nil {
+			slog.Warn("initialize advice llm config", slog.Any("error", err))
+		}
+	}
 
 	appBrowser, err := browser.NewBrowser(cfg.Headless)
 	if err != nil {
