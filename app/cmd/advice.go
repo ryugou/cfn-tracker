@@ -29,8 +29,10 @@ const (
 	anthropicBaseURLEnvKey      = "ANTHROPIC_BASE_URL"
 	anthropicVersionEnvKey      = "ANTHROPIC_VERSION"
 	anthropicAPIKeyOPRefEnvKey  = "ANTHROPIC_API_KEY_OP_REF"
-	defaultAnthropicAPIKeyOPRef = "op://ai-agents/CFN-Tracker/Anthropic APIKey"
+	defaultAnthropicAPIKeyOPRef = "op://ai-agents/CFN-Tracker/credential"
 )
+
+var adviceHTTPClient = http.DefaultClient
 
 type adviceContext struct {
 	UserID         string                  `json:"userId"`
@@ -323,7 +325,7 @@ func requestAdviceLLM(
 	}
 	req.Header.Set("anthropic-version", anthropicVersion)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := adviceHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("call llm: %w", err)
 	}
@@ -358,6 +360,11 @@ func requestAdviceLLM(
 		return nil, err
 	}
 	candidate.Evidence = append(dbEvidenceFromContext(adviceCtx), graphEvidence...)
+	candidate.Evidence = append(candidate.Evidence, model.AdviceEvidence{
+		Source: "llm",
+		Title:  modelName,
+		Text:   "Anthropic Messages APIで生成しました。",
+	})
 	return candidate, nil
 }
 
