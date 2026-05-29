@@ -35,16 +35,18 @@ func TestParseAdviceCandidateJSONRejectsMissingRequiredFields(t *testing.T) {
 	}
 }
 
-func TestLoadAnthropicAPIKeyPrefersEnv(t *testing.T) {
+func TestLoadAnthropicAPIKeyUsesProcessCacheBeforeReadingAgain(t *testing.T) {
 	resetAnthropicAPIKeyCache(t)
-	t.Setenv(anthropicAPIKeyEnvKey, "env-key")
+	anthropicAPIKeyCache.Lock()
+	anthropicAPIKeyCache.value = "cached-key"
+	anthropicAPIKeyCache.Unlock()
 	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://unused")
 
 	key, err := loadAnthropicAPIKey(context.Background())
 	if err != nil {
 		t.Fatalf("loadAnthropicAPIKey: %v", err)
 	}
-	if key != "env-key" {
+	if key != "cached-key" {
 		t.Fatalf("key = %q", key)
 	}
 }
@@ -60,8 +62,7 @@ func TestLoadAnthropicAPIKeyFallsBackTo1PasswordRef(t *testing.T) {
 		t.Fatalf("write fake op: %v", err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv(anthropicAPIKeyEnvKey, "")
-	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://ai-agents/CFN-Tracker/Anthropic APIKey")
+	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://ai-agents/CFN-Tracker/credential")
 
 	key, err := loadAnthropicAPIKey(context.Background())
 	if err != nil {

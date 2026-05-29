@@ -24,6 +24,7 @@ const (
 	defaultAnthropicVersion     = "2023-06-01"
 	defaultAnthropicOpusModel   = "claude-opus-4-6"
 	defaultAnthropicSonnetModel = "claude-sonnet-4-6"
+	anthropicRequestTimeout     = 90 * time.Second
 	anthropicOpusModelEnvKey    = "ADVICE_LLM_OPUS_MODEL"
 	anthropicSonnetModelEnvKey  = "ADVICE_LLM_SONNET_MODEL"
 	anthropicAPIKeyEnvKey       = "ANTHROPIC_API_KEY"
@@ -320,7 +321,7 @@ func requestAdviceLLM(
 	if err != nil {
 		return nil, fmt.Errorf("marshal llm request: %w", err)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, anthropicRequestTimeout)
 	defer cancel()
 	baseURL := strings.TrimRight(os.Getenv(anthropicBaseURLEnvKey), "/")
 	if baseURL == "" {
@@ -382,10 +383,6 @@ func requestAdviceLLM(
 }
 
 func loadAnthropicAPIKey(ctx context.Context) (string, error) {
-	if apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey)); apiKey != "" {
-		return apiKey, nil
-	}
-
 	anthropicAPIKeyCache.Lock()
 	defer anthropicAPIKeyCache.Unlock()
 	if anthropicAPIKeyCache.value != "" {
@@ -403,9 +400,9 @@ func loadAnthropicAPIKey(ctx context.Context) (string, error) {
 	if err != nil {
 		detail := strings.TrimSpace(stderr.String())
 		if detail != "" {
-			return "", fmt.Errorf("%s is not configured and 1Password reference %q could not be read: %w: %s", anthropicAPIKeyEnvKey, opRef, err, detail)
+			return "", fmt.Errorf("1Password reference %q could not be read: %w: %s", opRef, err, detail)
 		}
-		return "", fmt.Errorf("%s is not configured and 1Password reference %q could not be read: %w", anthropicAPIKeyEnvKey, opRef, err)
+		return "", fmt.Errorf("1Password reference %q could not be read: %w", opRef, err)
 	}
 	apiKey := strings.TrimSpace(string(out))
 	if apiKey == "" {
