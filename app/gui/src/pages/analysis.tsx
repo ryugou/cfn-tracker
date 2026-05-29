@@ -22,6 +22,7 @@ import {
   GetUsers,
   RefreshBenchmarkPlayers
 } from '@cmd/CommandHandler'
+import { EventsOff, EventsOn } from '@runtime'
 import { model } from '@model'
 
 import { formatPerMatchCount, formatRate, formatSeconds } from './stats/formatters'
@@ -95,6 +96,13 @@ const chartTooltip = {
   color: '#f4f4f5'
 }
 
+type BenchmarkRefreshProgress = {
+  userId: string
+  character: string
+  completed: number
+  total: number
+}
+
 export function AnalysisPage() {
   const { t } = useTranslation()
   const trackingUser = TrackingMachineContext.useSelector(s => s.context.user)
@@ -107,6 +115,7 @@ export function AnalysisPage() {
   const [comparison, setComparison] = React.useState<model.BenchmarkComparison | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [refreshing, setRefreshing] = React.useState(false)
+  const [refreshProgress, setRefreshProgress] = React.useState<BenchmarkRefreshProgress | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -172,9 +181,22 @@ export function AnalysisPage() {
     }
   }, [selectedUser, selectedChar])
 
+  React.useEffect(() => {
+    EventsOn('benchmark-refresh-progress', (progress: BenchmarkRefreshProgress) => {
+      setRefreshProgress(current => {
+        if (progress.userId !== selectedUser || progress.character !== selectedChar) return current
+        return progress
+      })
+    })
+    return () => {
+      EventsOff('benchmark-refresh-progress')
+    }
+  }, [selectedUser, selectedChar])
+
   const refresh = React.useCallback(() => {
     if (!selectedUser || !selectedChar) return
     setRefreshing(true)
+    setRefreshProgress({ userId: selectedUser, character: selectedChar, completed: 0, total: 10 })
     RefreshBenchmarkPlayers(selectedUser, selectedChar)
       .then(() => GetBenchmarkComparison(selectedUser, selectedChar))
       .then(data => {
@@ -182,7 +204,10 @@ export function AnalysisPage() {
         setComparison(normalizeComparison(data))
       })
       .catch(e => setError(String(e)))
-      .finally(() => setRefreshing(false))
+      .finally(() => {
+        setRefreshing(false)
+        setRefreshProgress(null)
+      })
   }, [selectedUser, selectedChar])
 
   const averages = React.useMemo(() => {
@@ -252,6 +277,11 @@ export function AnalysisPage() {
           >
             {refreshing ? t('loading') : t('analysisRefresh')}
           </Button>
+          {refreshing && refreshProgress && (
+            <span className='text-sm tabular-nums text-white/70'>
+              {refreshProgress.completed}/{refreshProgress.total}
+            </span>
+          )}
         </div>
 
         {error && (
