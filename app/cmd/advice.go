@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
+	"net/http"
 	"os"
 	"os/exec"
 	"sort"
@@ -15,6 +18,26 @@ import (
 )
 
 const adviceInputWindow = 30
+
+type adviceContext struct {
+	UserID         string                  `json:"userId"`
+	Character      string                  `json:"character"`
+	InputWindow    int                     `json:"inputWindow"`
+	SnapshotAt     string                  `json:"snapshotAt"`
+	Signals        []adviceSignalForPrompt `json:"signals"`
+	BenchmarkCount int                     `json:"benchmarkCount"`
+}
+
+type adviceSignalForPrompt struct {
+	Key         string  `json:"key"`
+	Label       string  `json:"label"`
+	Description string  `json:"description"`
+	Self        float64 `json:"self"`
+	Benchmark   float64 `json:"benchmark"`
+	Trend       float64 `json:"trend"`
+	HigherGood  bool    `json:"higherGood"`
+	Severity    float64 `json:"severity"`
+}
 
 type adviceSignal struct {
 	key         string
@@ -48,8 +71,12 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 	averages := benchmarkAverages(players)
 
 	signals := adviceSignals(latest, history, averages)
-	dbCandidate := buildDBOnlyAdvice(signals)
-	graphCandidate := buildGraphRAGAdvice(signals, ch.searchVegapunkEvidence(ctx, character, dbCandidate.Theme, dbCandidate.Summary))
+	adviceCtx := buildAdviceContext(userId, character, latest, signals, len(players))
+	dbFallback := buildDBOnlyAdvice(signals)
+	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, adviceCtx, nil, dbFallback)
+	graphEvidence := ch.searchVegapunkEvidence(ctx, character, dbCandidate.Theme, dbCandidate.Summary)
+	graphFallback := buildGraphRAGAdvice(signals, graphEvidence)
+	graphCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeGraphRAG, adviceCtx, graphEvidence, graphFallback)
 
 	run := &model.AdviceRun{
 		UserId:      userId,
@@ -116,6 +143,35 @@ func adviceSignals(
 	return rows
 }
 
+func buildAdviceContext(
+	userId, character string,
+	latest *model.PlayStatsSnapshot,
+	signals []adviceSignal,
+	benchmarkCount int,
+) adviceContext {
+	out := adviceContext{
+		UserID:         userId,
+		Character:      character,
+		InputWindow:    adviceInputWindow,
+		SnapshotAt:     latest.SnapshotAt,
+		BenchmarkCount: benchmarkCount,
+		Signals:        make([]adviceSignalForPrompt, 0, len(signals)),
+	}
+	for _, signal := range signals {
+		out.Signals = append(out.Signals, adviceSignalForPrompt{
+			Key:         signal.key,
+			Label:       signal.label,
+			Description: signal.description,
+			Self:        round2(signal.self),
+			Benchmark:   round2(signal.benchmark),
+			Trend:       round2(signal.trend),
+			HigherGood:  signal.higherGood,
+			Severity:    round2(signal.severity),
+		})
+	}
+	return out
+}
+
 func makeSignal(key, label string, self, benchmark, trend float64, higherGood bool, description string) adviceSignal {
 	gap := 0.0
 	if benchmark > 0 {
@@ -167,6 +223,183 @@ func buildGraphRAGAdvice(signals []adviceSignal, evidence []model.AdviceEvidence
 		{Source: "db", Title: top.label, Text: fmt.Sprintf("自分 %.2f / 比較対象 %.2f / 推移 %.2f", top.self, top.benchmark, top.trend)},
 	}, evidence...)
 	return c
+}
+
+func (ch *CommandHandler) generateAdviceWithLLM(
+	ctx context.Context,
+	mode model.AdviceMode,
+	adviceCtx adviceContext,
+	graphEvidence []model.AdviceEvidence,
+	fallback *model.AdviceCandidate,
+) *model.AdviceCandidate {
+	candidate, err := requestAdviceLLM(ctx, mode, adviceCtx, graphEvidence)
+	if err != nil {
+		fallback.Evidence = append(fallback.Evidence, model.AdviceEvidence{
+			Source: "llm",
+			Title:  "LLM未使用",
+			Text:   err.Error(),
+		})
+		return fallback
+	}
+	candidate.Mode = mode
+	if len(candidate.Evidence) == 0 {
+		candidate.Evidence = fallback.Evidence
+	}
+	return candidate
+}
+
+func requestAdviceLLM(
+	ctx context.Context,
+	mode model.AdviceMode,
+	adviceCtx adviceContext,
+	graphEvidence []model.AdviceEvidence,
+) (*model.AdviceCandidate, error) {
+	baseURL := strings.TrimRight(os.Getenv("ADVICE_LLM_BASE_URL"), "/")
+	modelName := os.Getenv("ADVICE_LLM_MODEL")
+	if baseURL == "" || modelName == "" {
+		return nil, fmt.Errorf("ADVICE_LLM_BASE_URL and ADVICE_LLM_MODEL are not configured")
+	}
+	system := adviceSystemPrompt(mode)
+	user, err := adviceUserPrompt(mode, adviceCtx, graphEvidence)
+	if err != nil {
+		return nil, err
+	}
+	reqBody := map[string]any{
+		"model": modelName,
+		"messages": []map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+		"temperature": 0.2,
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal llm request: %w", err)
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create llm request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if key := os.Getenv("ADVICE_LLM_API_KEY"); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("call llm: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read llm response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("llm status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("parse llm response: %w", err)
+	}
+	if len(parsed.Choices) == 0 || strings.TrimSpace(parsed.Choices[0].Message.Content) == "" {
+		return nil, fmt.Errorf("llm response is empty")
+	}
+	candidate, err := parseAdviceCandidateJSON(parsed.Choices[0].Message.Content)
+	if err != nil {
+		return nil, err
+	}
+	candidate.Evidence = append(dbEvidenceFromContext(adviceCtx), graphEvidence...)
+	return candidate, nil
+}
+
+func adviceSystemPrompt(mode model.AdviceMode) string {
+	modeInstruction := "DB観測データだけを根拠にして、攻略知識を推測で広げすぎないでください。"
+	if mode == model.AdviceModeGraphRAG {
+		modeInstruction = "DB観測データを主根拠にし、GraphRAG evidenceを追加根拠として使ってください。矛盾する場合はDB観測データを優先してください。"
+	}
+	return strings.Join([]string{
+		"あなたはStreet Fighter 6の分析コーチです。",
+		"目的は、プレイヤーの現在値、直近推移、ベンチマーク差分から、次に実行する施策カードを1つ作ることです。",
+		"観測事実と推定を分け、因果を断定しすぎないでください。",
+		"短期間で言うことを変えすぎず、成功条件と副作用として監視する指標を必ず含めてください。",
+		modeInstruction,
+		"返答はJSONのみ。Markdownや説明文は不要です。",
+		"JSON keys: priority, theme, summary, rationale, action, drill, successCriteria, watchMetrics, risks",
+	}, "\n")
+}
+
+func adviceUserPrompt(mode model.AdviceMode, adviceCtx adviceContext, graphEvidence []model.AdviceEvidence) (string, error) {
+	payload := map[string]any{
+		"mode":        mode,
+		"db_context":  adviceCtx,
+		"output_note": "全フィールドは日本語で、実行可能な具体性を持たせてください。",
+	}
+	if mode == model.AdviceModeGraphRAG {
+		payload["graph_rag_evidence"] = graphEvidence
+	}
+	b, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal advice prompt context: %w", err)
+	}
+	return string(b), nil
+}
+
+func parseAdviceCandidateJSON(content string) (*model.AdviceCandidate, error) {
+	content = strings.TrimSpace(content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+	var out struct {
+		Priority        string `json:"priority"`
+		Theme           string `json:"theme"`
+		Summary         string `json:"summary"`
+		Rationale       string `json:"rationale"`
+		Action          string `json:"action"`
+		Drill           string `json:"drill"`
+		SuccessCriteria string `json:"successCriteria"`
+		WatchMetrics    string `json:"watchMetrics"`
+		Risks           string `json:"risks"`
+	}
+	if err := json.Unmarshal([]byte(content), &out); err != nil {
+		return nil, fmt.Errorf("parse advice json: %w", err)
+	}
+	if out.Theme == "" || out.Action == "" {
+		return nil, fmt.Errorf("advice json is missing required fields")
+	}
+	return &model.AdviceCandidate{
+		Priority:        out.Priority,
+		Theme:           out.Theme,
+		Summary:         out.Summary,
+		Rationale:       out.Rationale,
+		Action:          out.Action,
+		Drill:           out.Drill,
+		SuccessCriteria: out.SuccessCriteria,
+		WatchMetrics:    out.WatchMetrics,
+		Risks:           out.Risks,
+	}, nil
+}
+
+func dbEvidenceFromContext(adviceCtx adviceContext) []model.AdviceEvidence {
+	evidence := make([]model.AdviceEvidence, 0, len(adviceCtx.Signals))
+	for _, signal := range adviceCtx.Signals {
+		evidence = append(evidence, model.AdviceEvidence{
+			Source: "db",
+			Title:  signal.Label,
+			Text: fmt.Sprintf(
+				"%s: 自分 %.2f / 比較対象 %.2f / 直近%d件の推移 %.2f",
+				signal.Description, signal.Self, signal.Benchmark, adviceCtx.InputWindow, signal.Trend,
+			),
+		})
+	}
+	return evidence
 }
 
 func baseAdvice(top adviceSignal) *model.AdviceCandidate {
@@ -249,6 +482,10 @@ func trend(rows []*model.PlayStatsSnapshot, pick func(*model.PlayStatsSnapshot) 
 		return 0
 	}
 	return pick(rows[len(rows)-1]) - pick(rows[0])
+}
+
+func round2(value float64) float64 {
+	return math.Round(value*100) / 100
 }
 
 func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character, theme, summary string) []model.AdviceEvidence {
