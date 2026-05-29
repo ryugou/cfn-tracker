@@ -17,7 +17,18 @@ import (
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
 
-const adviceInputWindow = 30
+const (
+	adviceInputWindow           = 30
+	defaultAnthropicBaseURL     = "https://api.anthropic.com/v1"
+	defaultAnthropicVersion     = "2023-06-01"
+	defaultAnthropicOpusModel   = "claude-opus-4-6"
+	defaultAnthropicSonnetModel = "claude-sonnet-4-6"
+	anthropicOpusModelEnvKey    = "ADVICE_LLM_OPUS_MODEL"
+	anthropicSonnetModelEnvKey  = "ADVICE_LLM_SONNET_MODEL"
+	anthropicAPIKeyEnvKey       = "ANTHROPIC_API_KEY"
+	anthropicBaseURLEnvKey      = "ANTHROPIC_BASE_URL"
+	anthropicVersionEnvKey      = "ANTHROPIC_VERSION"
+)
 
 type adviceContext struct {
 	UserID         string                  `json:"userId"`
@@ -72,18 +83,23 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 
 	signals := adviceSignals(latest, history, averages)
 	adviceCtx := buildAdviceContext(userId, character, latest, signals, len(players))
+	sonnetModel := adviceLLMModel(anthropicSonnetModelEnvKey, defaultAnthropicSonnetModel)
+	opusModel := adviceLLMModel(anthropicOpusModelEnvKey, defaultAnthropicOpusModel)
+
 	dbFallback := buildDBOnlyAdvice(signals)
-	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, adviceCtx, nil, dbFallback)
+	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, adviceCtx, nil, dbFallback)
 	graphEvidence := ch.searchVegapunkEvidence(ctx, character, dbCandidate.Theme, dbCandidate.Summary)
-	graphFallback := buildGraphRAGAdvice(signals, graphEvidence)
-	graphCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeGraphRAG, adviceCtx, graphEvidence, graphFallback)
+	graphSonnetFallback := buildGraphRAGAdvice(signals, graphEvidence)
+	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, adviceCtx, graphEvidence, graphSonnetFallback)
+	graphOpusFallback := buildGraphRAGAdvice(signals, graphEvidence)
+	graphOpusCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordOpus46, opusModel, adviceCtx, graphEvidence, graphOpusFallback)
 
 	run := &model.AdviceRun{
 		UserId:      userId,
 		Character:   character,
 		InputWindow: adviceInputWindow,
 		SnapshotAt:  latest.SnapshotAt,
-		Candidates:  []*model.AdviceCandidate{dbCandidate, graphCandidate},
+		Candidates:  []*model.AdviceCandidate{graphOpusCandidate, graphSonnetCandidate, dbCandidate},
 	}
 	if err := ch.sqlDb.SaveAdviceRun(ctx, run); err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
@@ -223,7 +239,7 @@ func buildGraphRAGAdvice(signals []adviceSignal, evidence []model.AdviceEvidence
 	c := baseAdvice(top)
 	c.Mode = model.AdviceModeGraphRAG
 	c.Rationale = fmt.Sprintf(
-		"DB上は%sが優先課題です。GraphRAG側では、この数値変化を攻略知識・副作用候補・過去施策の根拠と接続して検証します。根拠が不足する場合は断定せず、次回の監視指標を増やします。",
+		"DB上は%sが優先課題です。PunkRecord側では、この数値変化を攻略知識・副作用候補・過去施策の根拠と接続して検証します。根拠が不足する場合は断定せず、次回の監視指標を増やします。",
 		top.label,
 	)
 	c.Risks = fmt.Sprintf("%sだけを追うと、別の行動量が落ちる可能性があります。投げ、パニカン被弾、壁際時間を副作用指標として同時に見ます。", top.label)
@@ -236,11 +252,13 @@ func buildGraphRAGAdvice(signals []adviceSignal, evidence []model.AdviceEvidence
 func (ch *CommandHandler) generateAdviceWithLLM(
 	ctx context.Context,
 	mode model.AdviceMode,
+	modelName string,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 	fallback *model.AdviceCandidate,
 ) *model.AdviceCandidate {
-	candidate, err := requestAdviceLLM(ctx, mode, adviceCtx, graphEvidence)
+	fallback.Mode = mode
+	candidate, err := requestAdviceLLM(ctx, mode, modelName, adviceCtx, graphEvidence)
 	if err != nil {
 		fallback.Evidence = append(fallback.Evidence, model.AdviceEvidence{
 			Source: "llm",
@@ -259,13 +277,13 @@ func (ch *CommandHandler) generateAdviceWithLLM(
 func requestAdviceLLM(
 	ctx context.Context,
 	mode model.AdviceMode,
+	modelName string,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 ) (*model.AdviceCandidate, error) {
-	baseURL := strings.TrimRight(os.Getenv("ADVICE_LLM_BASE_URL"), "/")
-	modelName := os.Getenv("ADVICE_LLM_MODEL")
-	if baseURL == "" || modelName == "" {
-		return nil, fmt.Errorf("ADVICE_LLM_BASE_URL and ADVICE_LLM_MODEL are not configured")
+	apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey))
+	if apiKey == "" {
+		return nil, fmt.Errorf("%s is not configured", anthropicAPIKeyEnvKey)
 	}
 	system := adviceSystemPrompt(mode)
 	user, err := adviceUserPrompt(mode, adviceCtx, graphEvidence)
@@ -273,12 +291,13 @@ func requestAdviceLLM(
 		return nil, err
 	}
 	reqBody := map[string]any{
-		"model": modelName,
+		"model":       modelName,
+		"max_tokens":  1600,
+		"temperature": 0.2,
+		"system":      system,
 		"messages": []map[string]string{
-			{"role": "system", "content": system},
 			{"role": "user", "content": user},
 		},
-		"temperature": 0.2,
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
@@ -286,14 +305,22 @@ func requestAdviceLLM(
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
+	baseURL := strings.TrimRight(os.Getenv(anthropicBaseURLEnvKey), "/")
+	if baseURL == "" {
+		baseURL = defaultAnthropicBaseURL
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, baseURL+"/messages", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create llm request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if key := os.Getenv("ADVICE_LLM_API_KEY"); key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("x-api-key", apiKey)
+	anthropicVersion := strings.TrimSpace(os.Getenv(anthropicVersionEnvKey))
+	if anthropicVersion == "" {
+		anthropicVersion = defaultAnthropicVersion
 	}
+	req.Header.Set("anthropic-version", anthropicVersion)
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("call llm: %w", err)
@@ -307,19 +334,24 @@ func requestAdviceLLM(
 		return nil, fmt.Errorf("llm status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	var parsed struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, fmt.Errorf("parse llm response: %w", err)
 	}
-	if len(parsed.Choices) == 0 || strings.TrimSpace(parsed.Choices[0].Message.Content) == "" {
+	content := strings.Builder{}
+	for _, block := range parsed.Content {
+		if block.Type == "text" {
+			content.WriteString(block.Text)
+		}
+	}
+	if strings.TrimSpace(content.String()) == "" {
 		return nil, fmt.Errorf("llm response is empty")
 	}
-	candidate, err := parseAdviceCandidateJSON(parsed.Choices[0].Message.Content)
+	candidate, err := parseAdviceCandidateJSON(content.String())
 	if err != nil {
 		return nil, err
 	}
@@ -327,10 +359,17 @@ func requestAdviceLLM(
 	return candidate, nil
 }
 
+func adviceLLMModel(envKey, fallback string) string {
+	if modelName := strings.TrimSpace(os.Getenv(envKey)); modelName != "" {
+		return modelName
+	}
+	return fallback
+}
+
 func adviceSystemPrompt(mode model.AdviceMode) string {
 	modeInstruction := "DB観測データだけを根拠にして、攻略知識を推測で広げすぎないでください。"
-	if mode == model.AdviceModeGraphRAG {
-		modeInstruction = "DB観測データを主根拠にし、GraphRAG evidenceを追加根拠として使ってください。矛盾する場合はDB観測データを優先してください。"
+	if usesPunkRecordEvidence(mode) {
+		modeInstruction = "DB観測データを主根拠にし、PunkRecord/GraphRAG evidenceを追加根拠として使ってください。矛盾する場合はDB観測データを優先してください。"
 	}
 	return strings.Join([]string{
 		"あなたはStreet Fighter 6の分析コーチです。",
@@ -349,7 +388,7 @@ func adviceUserPrompt(mode model.AdviceMode, adviceCtx adviceContext, graphEvide
 		"db_context":  adviceCtx,
 		"output_note": "全フィールドは日本語で、実行可能な具体性を持たせてください。",
 	}
-	if mode == model.AdviceModeGraphRAG {
+	if usesPunkRecordEvidence(mode) {
 		payload["graph_rag_evidence"] = graphEvidence
 	}
 	b, err := json.MarshalIndent(payload, "", "  ")
@@ -357,6 +396,12 @@ func adviceUserPrompt(mode model.AdviceMode, adviceCtx adviceContext, graphEvide
 		return "", fmt.Errorf("marshal advice prompt context: %w", err)
 	}
 	return string(b), nil
+}
+
+func usesPunkRecordEvidence(mode model.AdviceMode) bool {
+	return mode == model.AdviceModeGraphRAG ||
+		mode == model.AdviceModePunkRecordOpus46 ||
+		mode == model.AdviceModePunkRecordSonnet46
 }
 
 func parseAdviceCandidateJSON(content string) (*model.AdviceCandidate, error) {
