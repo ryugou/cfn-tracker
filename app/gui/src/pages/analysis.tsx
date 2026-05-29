@@ -26,6 +26,7 @@ import { EventsOff, EventsOn } from '@runtime'
 import { model } from '@model'
 
 import { formatPerMatchCount, formatRate, formatSeconds } from './stats/formatters'
+import { formatJSTDateTime } from '@/helpers/date'
 import type { LocalizationKey } from '@/main/i18n'
 
 type Metric = {
@@ -311,7 +312,7 @@ export function AnalysisPage() {
         {comparison && players.length > 0 && (
           <>
             <div className='mb-4 grid grid-cols-3 gap-3'>
-              <Summary label={t('analysisSelf')} value={comparison.self?.snapshotAt ?? '—'} />
+              <Summary label={t('analysisSelf')} value={formatJSTDateTime(comparison.self?.snapshotAt)} />
               <Summary
                 label={rank1Label}
                 value={`${averages.get(1)?.count ?? 0} / ${players.filter(p => p.rankOffset === 1).length}`}

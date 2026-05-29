@@ -14,6 +14,7 @@ import {
   SaveAdviceFeedback
 } from '@cmd/CommandHandler'
 import { model } from '@model'
+import { formatJSTDateTime } from '@/helpers/date'
 
 export function AdvicePage() {
   const { t } = useTranslation()
@@ -156,9 +157,9 @@ export function AdvicePage() {
         {run && (
           <>
             <div className='mb-4 grid grid-cols-3 gap-3'>
-              <Summary label='生成日時' value={run.createdAt || '—'} />
+              <Summary label='生成日時' value={formatJSTDateTime(run.createdAt)} />
               <Summary label='対象' value={`${run.character} / 直近${run.inputWindow}件`} />
-              <Summary label='基準スナップショット' value={run.snapshotAt || '—'} />
+              <Summary label='基準スナップショット' value={formatJSTDateTime(run.snapshotAt)} />
             </div>
             {runs.length > 0 && (
               <div className='mb-4 rounded border border-white/10 bg-zinc-900/35 p-3'>
@@ -174,7 +175,7 @@ export function AdvicePage() {
                       }`}
                       onClick={() => setRun(item)}
                     >
-                      <div className='font-medium'>{item.createdAt || '—'}</div>
+                      <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
                       <div className='mt-1 text-white/45'>
                         {item.character} / {item.candidates?.length ?? 0}件
                       </div>

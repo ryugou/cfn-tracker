@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
@@ -23,16 +25,17 @@ const (
 	defaultAnthropicVersion     = "2023-06-01"
 	defaultAnthropicOpusModel   = "claude-opus-4-6"
 	defaultAnthropicSonnetModel = "claude-sonnet-4-6"
+	anthropicRequestTimeout     = 90 * time.Second
 	anthropicOpusModelEnvKey    = "ADVICE_LLM_OPUS_MODEL"
 	anthropicSonnetModelEnvKey  = "ADVICE_LLM_SONNET_MODEL"
 	anthropicAPIKeyEnvKey       = "ANTHROPIC_API_KEY"
 	anthropicBaseURLEnvKey      = "ANTHROPIC_BASE_URL"
 	anthropicVersionEnvKey      = "ANTHROPIC_VERSION"
 	anthropicAPIKeyOPRefEnvKey  = "ANTHROPIC_API_KEY_OP_REF"
-	defaultAnthropicAPIKeyOPRef = "op://ai-agents/CFN-Tracker/credential"
 )
 
 var adviceHTTPClient = http.DefaultClient
+var adviceLLMConfigMu sync.Mutex
 
 type adviceContext struct {
 	UserID         string                  `json:"userId"`
@@ -89,14 +92,16 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 	adviceCtx := buildAdviceContext(userId, character, latest, signals, len(players))
 	sonnetModel := adviceLLMModel(anthropicSonnetModelEnvKey, defaultAnthropicSonnetModel)
 	opusModel := adviceLLMModel(anthropicOpusModelEnvKey, defaultAnthropicOpusModel)
+	apiKeyErr := InitializeAdviceLLMConfig(ctx)
+	apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey))
 
 	dbFallback := buildDBOnlyAdvice(signals)
-	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, adviceCtx, nil, dbFallback)
+	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, apiKey, apiKeyErr, adviceCtx, nil, dbFallback)
 	graphEvidence := ch.searchVegapunkEvidence(ctx, character, dbCandidate.Theme, dbCandidate.Summary)
 	graphSonnetFallback := buildGraphRAGAdvice(signals, graphEvidence)
-	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, adviceCtx, graphEvidence, graphSonnetFallback)
+	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, apiKey, apiKeyErr, adviceCtx, graphEvidence, graphSonnetFallback)
 	graphOpusFallback := buildGraphRAGAdvice(signals, graphEvidence)
-	graphOpusCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordOpus46, opusModel, adviceCtx, graphEvidence, graphOpusFallback)
+	graphOpusCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordOpus46, opusModel, apiKey, apiKeyErr, adviceCtx, graphEvidence, graphOpusFallback)
 
 	run := &model.AdviceRun{
 		UserId:      userId,
@@ -257,16 +262,18 @@ func (ch *CommandHandler) generateAdviceWithLLM(
 	ctx context.Context,
 	mode model.AdviceMode,
 	modelName string,
+	apiKey string,
+	apiKeyErr error,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 	fallback *model.AdviceCandidate,
 ) *model.AdviceCandidate {
 	fallback.Mode = mode
-	candidate, err := requestAdviceLLM(ctx, mode, modelName, adviceCtx, graphEvidence)
+	candidate, err := requestAdviceLLM(ctx, mode, modelName, apiKey, apiKeyErr, adviceCtx, graphEvidence)
 	if err != nil {
 		fallback.Evidence = append(fallback.Evidence, model.AdviceEvidence{
 			Source: "llm",
-			Title:  "LLM未使用",
+			Title:  "LLM結果使用不可",
 			Text:   err.Error(),
 		})
 		return fallback
@@ -282,12 +289,19 @@ func requestAdviceLLM(
 	ctx context.Context,
 	mode model.AdviceMode,
 	modelName string,
+	apiKey string,
+	apiKeyErr error,
 	adviceCtx adviceContext,
 	graphEvidence []model.AdviceEvidence,
 ) (*model.AdviceCandidate, error) {
-	apiKey, err := loadAnthropicAPIKey(ctx)
-	if err != nil {
-		return nil, err
+	if apiKeyErr != nil {
+		return nil, apiKeyErr
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, fmt.Errorf("%s is empty", anthropicAPIKeyEnvKey)
+	}
+	if strings.HasPrefix(strings.TrimSpace(apiKey), "op://") {
+		return nil, fmt.Errorf("%s is still a 1Password reference; startup resolution has not completed or failed", anthropicAPIKeyEnvKey)
 	}
 	system := adviceSystemPrompt(mode)
 	user, err := adviceUserPrompt(mode, adviceCtx, graphEvidence)
@@ -307,7 +321,7 @@ func requestAdviceLLM(
 	if err != nil {
 		return nil, fmt.Errorf("marshal llm request: %w", err)
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, anthropicRequestTimeout)
 	defer cancel()
 	baseURL := strings.TrimRight(os.Getenv(anthropicBaseURLEnvKey), "/")
 	if baseURL == "" {
@@ -368,26 +382,37 @@ func requestAdviceLLM(
 	return candidate, nil
 }
 
-func loadAnthropicAPIKey(ctx context.Context) (string, error) {
-	if apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey)); apiKey != "" {
-		return apiKey, nil
-	}
+func InitializeAdviceLLMConfig(ctx context.Context) error {
+	adviceLLMConfigMu.Lock()
+	defer adviceLLMConfigMu.Unlock()
 
+	apiKey := strings.TrimSpace(os.Getenv(anthropicAPIKeyEnvKey))
+	if apiKey != "" && !strings.HasPrefix(apiKey, "op://") {
+		return nil
+	}
 	opRef := strings.TrimSpace(os.Getenv(anthropicAPIKeyOPRefEnvKey))
+	if strings.HasPrefix(apiKey, "op://") {
+		opRef = apiKey
+	}
 	if opRef == "" {
-		opRef = defaultAnthropicAPIKeyOPRef
+		return nil
 	}
-	cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(cmdCtx, "op", "read", opRef).Output()
+	cmd := exec.CommandContext(ctx, "op", "read", opRef)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("%s is not configured and 1Password reference %q could not be read: %w", anthropicAPIKeyEnvKey, opRef, err)
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return fmt.Errorf("1Password reference %q could not be read: %w: %s", opRef, err, detail)
+		}
+		return fmt.Errorf("1Password reference %q could not be read: %w", opRef, err)
 	}
-	apiKey := strings.TrimSpace(string(out))
+	apiKey = strings.TrimSpace(string(out))
 	if apiKey == "" {
-		return "", fmt.Errorf("1Password reference %q returned an empty Anthropic API key", opRef)
+		return fmt.Errorf("1Password reference %q returned an empty Anthropic API key", opRef)
 	}
-	return apiKey, nil
+	return os.Setenv(anthropicAPIKeyEnvKey, apiKey)
 }
 
 func adviceLLMModel(envKey, fallback string) string {
@@ -410,6 +435,7 @@ func adviceSystemPrompt(mode model.AdviceMode) string {
 		modeInstruction,
 		"返答はJSONのみ。Markdownや説明文は不要です。",
 		"JSON keys: priority, theme, summary, rationale, action, drill, successCriteria, watchMetrics, risks",
+		"各JSON valueは文字列にしてください。配列やオブジェクトは使わず、複数項目は改行区切りの文字列にしてください。",
 	}, "\n")
 }
 
@@ -442,33 +468,117 @@ func parseAdviceCandidateJSON(content string) (*model.AdviceCandidate, error) {
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 	var out struct {
-		Priority        string `json:"priority"`
-		Theme           string `json:"theme"`
-		Summary         string `json:"summary"`
-		Rationale       string `json:"rationale"`
-		Action          string `json:"action"`
-		Drill           string `json:"drill"`
-		SuccessCriteria string `json:"successCriteria"`
-		WatchMetrics    string `json:"watchMetrics"`
-		Risks           string `json:"risks"`
+		Priority        adviceJSONText `json:"priority"`
+		Theme           adviceJSONText `json:"theme"`
+		Summary         adviceJSONText `json:"summary"`
+		Rationale       adviceJSONText `json:"rationale"`
+		Action          adviceJSONText `json:"action"`
+		Drill           adviceJSONText `json:"drill"`
+		SuccessCriteria adviceJSONText `json:"successCriteria"`
+		WatchMetrics    adviceJSONText `json:"watchMetrics"`
+		Risks           adviceJSONText `json:"risks"`
 	}
 	if err := json.Unmarshal([]byte(content), &out); err != nil {
 		return nil, fmt.Errorf("parse advice json: %w", err)
 	}
-	if out.Theme == "" || out.Action == "" {
+	if out.Theme.String() == "" || out.Action.String() == "" {
 		return nil, fmt.Errorf("advice json is missing required fields")
 	}
 	return &model.AdviceCandidate{
-		Priority:        out.Priority,
-		Theme:           out.Theme,
-		Summary:         out.Summary,
-		Rationale:       out.Rationale,
-		Action:          out.Action,
-		Drill:           out.Drill,
-		SuccessCriteria: out.SuccessCriteria,
-		WatchMetrics:    out.WatchMetrics,
-		Risks:           out.Risks,
+		Priority:        out.Priority.String(),
+		Theme:           out.Theme.String(),
+		Summary:         out.Summary.String(),
+		Rationale:       out.Rationale.String(),
+		Action:          out.Action.String(),
+		Drill:           out.Drill.String(),
+		SuccessCriteria: out.SuccessCriteria.String(),
+		WatchMetrics:    out.WatchMetrics.String(),
+		Risks:           out.Risks.String(),
 	}, nil
+}
+
+type adviceJSONText string
+
+func (t *adviceJSONText) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*t = ""
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*t = adviceJSONText(s)
+		return nil
+	}
+	var n json.Number
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&n); err == nil {
+		*t = adviceJSONText(n.String())
+		return nil
+	}
+	var b bool
+	if err := json.Unmarshal(data, &b); err == nil {
+		*t = adviceJSONText(fmt.Sprintf("%t", b))
+		return nil
+	}
+	text, err := adviceJSONValueToText(data)
+	if err != nil {
+		return err
+	}
+	*t = adviceJSONText(text)
+	return nil
+}
+
+func (t adviceJSONText) String() string {
+	return strings.TrimSpace(string(t))
+}
+
+func adviceJSONValueToText(data []byte) (string, error) {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return "", fmt.Errorf("expected JSON value, got %s", strings.TrimSpace(string(data)))
+	}
+	return strings.TrimSpace(formatAdviceJSONValue(value, 0)), nil
+}
+
+func formatAdviceJSONValue(value any, depth int) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case json.Number:
+		return v.String()
+	case bool:
+		return fmt.Sprintf("%t", v)
+	case []any:
+		lines := make([]string, 0, len(v))
+		for _, item := range v {
+			text := strings.TrimSpace(formatAdviceJSONValue(item, depth+1))
+			if text != "" {
+				lines = append(lines, "- "+text)
+			}
+		}
+		return strings.Join(lines, "\n")
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		lines := make([]string, 0, len(keys))
+		for _, key := range keys {
+			text := strings.TrimSpace(formatAdviceJSONValue(v[key], depth+1))
+			if text != "" {
+				lines = append(lines, fmt.Sprintf("%s: %s", key, text))
+			}
+		}
+		return strings.Join(lines, "\n")
+	default:
+		return fmt.Sprint(v)
+	}
 }
 
 func dbEvidenceFromContext(adviceCtx adviceContext) []model.AdviceEvidence {
@@ -575,11 +685,19 @@ func round2(value float64) float64 {
 func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character, theme, summary string) []model.AdviceEvidence {
 	target := os.Getenv("VEGAPUNK_GRPC_TARGET")
 	if target == "" {
-		target = "vegapunk:6840"
+		target = "vegapunk.local:6840"
 	}
 	schema := os.Getenv("VEGAPUNK_SCHEMA")
 	if schema == "" {
 		schema = "sf6-advice"
+	}
+	protoPath := os.Getenv("VEGAPUNK_PROTO")
+	if protoPath == "" {
+		protoPath = "/Users/ryugo/Developer/src/AI-Project/vegapunk/proto/graphrag.proto"
+	}
+	protoImportPath := os.Getenv("VEGAPUNK_PROTO_IMPORT_PATH")
+	if protoImportPath == "" {
+		protoImportPath = filepath.Dir(protoPath)
 	}
 	query := fmt.Sprintf("SF6 %s %s %s", character, theme, summary)
 	req := map[string]any{
@@ -590,7 +708,7 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		"limit":  5,
 	}
 	body, _ := json.Marshal(req)
-	args := []string{"-plaintext", "-d", string(body)}
+	args := []string{"-plaintext", "-import-path", protoImportPath, "-proto", filepath.Base(protoPath), "-d", string(body)}
 	if token := os.Getenv("VEGAPUNK_TOKEN"); token != "" {
 		args = append(args, "-H", "authorization: Bearer "+token)
 	}
@@ -606,6 +724,13 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		text := strings.TrimSpace(stderr.String())
 		if text == "" {
 			text = err.Error()
+		}
+		if strings.Contains(text, "schema error: schema") && strings.Contains(text, "not found") {
+			return []model.AdviceEvidence{{
+				Source: "vegapunk",
+				Title:  "PunkRecord schema未作成",
+				Text:   fmt.Sprintf("VEGAPUNK_SCHEMA=%s はまだvegapunk側に作成されていません。SF6攻略知識をingestするschema作成後に検索結果が使われます。", schema),
+			}}
 		}
 		return []model.AdviceEvidence{{Source: "vegapunk", Title: "GraphRAG検索未接続", Text: text}}
 	}

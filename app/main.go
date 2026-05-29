@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -92,7 +93,10 @@ func init() {
 		logToFile()
 	}
 
-	if err := godotenv.Load(".env"); err != nil {
+	if err := loadEnvFile(envFilePath(), !isWailsBindings && !isGoTestProcess()); err != nil {
+		if !os.IsNotExist(err) {
+			log.Fatalf("load env file: %v", err)
+		}
 		cfg = config.BuildConfig{
 			AppVersion:        wailsCfg.Info.ProductVersion,
 			Headless:          isProduction == "true",
@@ -106,6 +110,56 @@ func init() {
 		log.Fatalf("process envconfig: %v", err)
 	}
 	cfg.AppVersion = wailsCfg.Info.ProductVersion
+}
+
+func loadEnvFile(path string, resolve1Password bool) error {
+	values, err := godotenv.Read(path)
+	if err != nil {
+		return err
+	}
+	for key, value := range values {
+		if resolve1Password && strings.HasPrefix(strings.TrimSpace(value), "op://") {
+			resolved, err := read1PasswordSecret(value)
+			if err != nil {
+				return err
+			}
+			value = resolved
+		}
+		if err := os.Setenv(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isGoTestProcess() bool {
+	return strings.HasSuffix(os.Args[0], ".test")
+}
+
+func read1PasswordSecret(ref string) (string, error) {
+	cmd := exec.Command("op", "read", ref)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return "", fmt.Errorf("read 1Password reference %q: %w: %s", ref, err, detail)
+		}
+		return "", fmt.Errorf("read 1Password reference %q: %w", ref, err)
+	}
+	secret := strings.TrimSpace(string(out))
+	if secret == "" {
+		return "", fmt.Errorf("read 1Password reference %q: empty value", ref)
+	}
+	return secret, nil
+}
+
+func envFilePath() string {
+	if _, err := os.Stat("app/.env"); err == nil {
+		return "app/.env"
+	}
+	return ".env"
 }
 
 func closeWithError(err error) {

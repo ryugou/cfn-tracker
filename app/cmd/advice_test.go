@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,26 +28,73 @@ func TestParseAdviceCandidateJSONAcceptsFencedJSON(t *testing.T) {
 	}
 }
 
+func TestParseAdviceCandidateJSONAcceptsNumericPriority(t *testing.T) {
+	candidate, err := parseAdviceCandidateJSON(`{"priority":1,"theme":"投げを増やす","summary":"要約","rationale":"根拠","action":"施策","drill":"練習","successCriteria":"成功","watchMetrics":"投げ","risks":"副作用"}`)
+	if err != nil {
+		t.Fatalf("parseAdviceCandidateJSON: %v", err)
+	}
+	if candidate.Priority != "1" {
+		t.Fatalf("Priority = %q", candidate.Priority)
+	}
+}
+
+func TestParseAdviceCandidateJSONAcceptsStructuredTextValues(t *testing.T) {
+	candidate, err := parseAdviceCandidateJSON(`{
+		"priority":"高",
+		"theme":"投げ択を増やす",
+		"summary":"要約",
+		"rationale":{
+			"observations":["throw_countが低い","cornered_timeが長い"],
+			"hypotheses":["投げ択不足で守勢が続いている可能性"]
+		},
+		"action":"施策",
+		"drill":"練習",
+		"successCriteria":["投げ回数を増やす","壁際時間を下げる"],
+		"watchMetrics":["throw_count","cornered_time"],
+		"risks":"副作用"
+	}`)
+	if err != nil {
+		t.Fatalf("parseAdviceCandidateJSON: %v", err)
+	}
+	if !strings.Contains(candidate.Rationale, "observations:") {
+		t.Fatalf("Rationale = %q", candidate.Rationale)
+	}
+	if !strings.Contains(candidate.SuccessCriteria, "- 投げ回数を増やす") {
+		t.Fatalf("SuccessCriteria = %q", candidate.SuccessCriteria)
+	}
+}
+
 func TestParseAdviceCandidateJSONRejectsMissingRequiredFields(t *testing.T) {
 	if _, err := parseAdviceCandidateJSON(`{"priority":"高","theme":"DI被弾を減らす"}`); err == nil {
 		t.Fatal("expected error for missing action")
 	}
 }
 
-func TestLoadAnthropicAPIKeyPrefersEnv(t *testing.T) {
+func TestInitializeAdviceLLMConfigKeepsRawEnvKey(t *testing.T) {
 	t.Setenv(anthropicAPIKeyEnvKey, "env-key")
 	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://unused")
 
-	key, err := loadAnthropicAPIKey(context.Background())
-	if err != nil {
-		t.Fatalf("loadAnthropicAPIKey: %v", err)
+	if err := InitializeAdviceLLMConfig(context.Background()); err != nil {
+		t.Fatalf("InitializeAdviceLLMConfig: %v", err)
 	}
-	if key != "env-key" {
-		t.Fatalf("key = %q", key)
+	if key := os.Getenv(anthropicAPIKeyEnvKey); key != "env-key" {
+		t.Fatalf("%s = %q", anthropicAPIKeyEnvKey, key)
 	}
 }
 
-func TestLoadAnthropicAPIKeyFallsBackTo1PasswordRef(t *testing.T) {
+func TestInitializeAdviceLLMConfigSkipsWhenUnset(t *testing.T) {
+	t.Setenv(anthropicAPIKeyEnvKey, "")
+	t.Setenv(anthropicAPIKeyOPRefEnvKey, "")
+
+	if err := InitializeAdviceLLMConfig(context.Background()); err != nil {
+		t.Fatalf("InitializeAdviceLLMConfig: %v", err)
+	}
+	if key := os.Getenv(anthropicAPIKeyEnvKey); key != "" {
+		t.Fatalf("%s = %q", anthropicAPIKeyEnvKey, key)
+	}
+}
+
+func TestInitializeAdviceLLMConfigFallsBackTo1PasswordRef(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test helper is unix-only")
 	}
@@ -56,14 +104,35 @@ func TestLoadAnthropicAPIKeyFallsBackTo1PasswordRef(t *testing.T) {
 		t.Fatalf("write fake op: %v", err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv(anthropicAPIKeyEnvKey, "")
-	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://ai-agents/CFN-Tracker/Anthropic APIKey")
+	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://ai-agents/CFN-Tracker/credential")
 
-	key, err := loadAnthropicAPIKey(context.Background())
-	if err != nil {
-		t.Fatalf("loadAnthropicAPIKey: %v", err)
+	t.Setenv(anthropicAPIKeyEnvKey, "")
+
+	if err := InitializeAdviceLLMConfig(context.Background()); err != nil {
+		t.Fatalf("InitializeAdviceLLMConfig: %v", err)
 	}
-	if key != "op-key" {
+	if key := os.Getenv(anthropicAPIKeyEnvKey); key != "op-key" {
+		t.Fatalf("key = %q", key)
+	}
+}
+
+func TestInitializeAdviceLLMConfigResolvesEnvOPRef(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test helper is unix-only")
+	}
+	dir := t.TempDir()
+	opPath := filepath.Join(dir, "op")
+	if err := os.WriteFile(opPath, []byte("#!/bin/sh\nprintf 'op-key\\n'\n"), 0o755); err != nil {
+		t.Fatalf("write fake op: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(anthropicAPIKeyEnvKey, "op://ai-agents/CFN-Tracker/credential")
+	t.Setenv(anthropicAPIKeyOPRefEnvKey, "")
+
+	if err := InitializeAdviceLLMConfig(context.Background()); err != nil {
+		t.Fatalf("InitializeAdviceLLMConfig: %v", err)
+	}
+	if key := os.Getenv(anthropicAPIKeyEnvKey); key != "op-key" {
 		t.Fatalf("key = %q", key)
 	}
 }
@@ -127,6 +196,8 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 		context.Background(),
 		model.AdviceModeDBOnly,
 		"claude-sonnet-4-6",
+		"test-key",
+		nil,
 		adviceContext{
 			UserID:      "u1",
 			Character:   "JP",
@@ -151,5 +222,41 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 	}
 	if !foundModelEvidence {
 		t.Fatalf("expected llm model evidence, got %#v", candidate.Evidence)
+	}
+}
+
+func TestRequestAdviceLLMRejectsUnresolved1PasswordRef(t *testing.T) {
+	_, err := requestAdviceLLM(
+		context.Background(),
+		model.AdviceModeDBOnly,
+		"claude-sonnet-4-6",
+		"op://ai-agents/CFN-Tracker/credential",
+		nil,
+		adviceContext{},
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected unresolved 1Password reference error")
+	}
+	if !strings.Contains(err.Error(), "still a 1Password reference") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRequestAdviceLLMReturnsStartupResolutionError(t *testing.T) {
+	_, err := requestAdviceLLM(
+		context.Background(),
+		model.AdviceModeDBOnly,
+		"claude-sonnet-4-6",
+		"op://ai-agents/CFN-Tracker/credential",
+		fmt.Errorf("startup resolution failed"),
+		adviceContext{},
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected startup resolution error")
+	}
+	if !strings.Contains(err.Error(), "startup resolution failed") {
+		t.Fatalf("err = %v", err)
 	}
 }
