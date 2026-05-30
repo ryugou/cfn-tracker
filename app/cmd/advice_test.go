@@ -70,6 +70,23 @@ func TestParseAdviceCandidateJSONRejectsMissingRequiredFields(t *testing.T) {
 	}
 }
 
+func TestVegapunkSearchTimeoutDefaultAndOverride(t *testing.T) {
+	t.Setenv(vegapunkSearchTimeoutEnvKey, "")
+	if got := vegapunkSearchTimeout(); got.String() != "30s" {
+		t.Fatalf("default timeout = %s", got)
+	}
+
+	t.Setenv(vegapunkSearchTimeoutEnvKey, "45")
+	if got := vegapunkSearchTimeout(); got.String() != "45s" {
+		t.Fatalf("override timeout = %s", got)
+	}
+
+	t.Setenv(vegapunkSearchTimeoutEnvKey, "bad")
+	if got := vegapunkSearchTimeout(); got.String() != "30s" {
+		t.Fatalf("bad override timeout = %s", got)
+	}
+}
+
 func TestInitializeAdviceLLMConfigKeepsRawEnvKey(t *testing.T) {
 	t.Setenv(anthropicAPIKeyEnvKey, "env-key")
 	t.Setenv(anthropicAPIKeyOPRefEnvKey, "op://unused")
