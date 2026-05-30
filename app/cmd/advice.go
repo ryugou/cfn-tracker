@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,7 @@ const (
 	anthropicBaseURLEnvKey      = "ANTHROPIC_BASE_URL"
 	anthropicVersionEnvKey      = "ANTHROPIC_VERSION"
 	anthropicAPIKeyOPRefEnvKey  = "ANTHROPIC_API_KEY_OP_REF"
+	vegapunkSearchTimeoutEnvKey = "VEGAPUNK_SEARCH_TIMEOUT_SECONDS"
 )
 
 var adviceHTTPClient = http.DefaultClient
@@ -714,7 +716,7 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	}
 	args = append(args, target, "graphrag.GraphRAGEngine/Search")
 
-	cmdCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	cmdCtx, cancel := context.WithTimeout(ctx, vegapunkSearchTimeout())
 	defer cancel()
 	cmd := exec.CommandContext(cmdCtx, "grpcurl", args...)
 	var stderr bytes.Buffer
@@ -724,6 +726,9 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		text := strings.TrimSpace(stderr.String())
 		if text == "" {
 			text = err.Error()
+		}
+		if cmdCtx.Err() == context.DeadlineExceeded {
+			text = fmt.Sprintf("vegapunk search timed out after %s", vegapunkSearchTimeout())
 		}
 		if strings.Contains(text, "schema error: schema") && strings.Contains(text, "not found") {
 			return []model.AdviceEvidence{{
@@ -757,4 +762,16 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: "GraphRAG検索結果なし", Text: query})
 	}
 	return evidence
+}
+
+func vegapunkSearchTimeout() time.Duration {
+	value := strings.TrimSpace(os.Getenv(vegapunkSearchTimeoutEnvKey))
+	if value == "" {
+		return 30 * time.Second
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(seconds) * time.Second
 }
