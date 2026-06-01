@@ -103,6 +103,28 @@ func (s *Storage) GetAdviceRuns(
 	return rows, nil
 }
 
+func (s *Storage) DeleteAdviceRun(ctx context.Context, runId int64) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete advice transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM advice_feedback WHERE run_id = ?`, runId); err != nil {
+		return fmt.Errorf("delete advice feedback: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM advice_candidates WHERE run_id = ?`, runId); err != nil {
+		return fmt.Errorf("delete advice candidates: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM advice_runs WHERE id = ?`, runId); err != nil {
+		return fmt.Errorf("delete advice run: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete advice transaction: %w", err)
+	}
+	return nil
+}
+
 func (s *Storage) SaveAdviceFeedback(ctx context.Context, fb model.AdviceFeedback) error {
 	if _, err := s.db.NamedExecContext(ctx, `
 		INSERT INTO advice_feedback (run_id, mode, rating, specificity, usefulness, trust, comment)
