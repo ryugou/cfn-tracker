@@ -51,3 +51,5 @@ export function SaveLocale(arg1:string):Promise<void>;
 export function SaveSidebarMinimized(arg1:boolean):Promise<void>;
 
 export function SaveTheme(arg1:model.ThemeName):Promise<void>;
+
+export function SyncVegapunkGrowthData(arg1:string,arg2:string):Promise<void>;

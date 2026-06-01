@@ -115,6 +115,7 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 	if err := ch.sqlDb.SaveAdviceRun(ctx, run); err != nil {
 		return nil, model.WrapError(model.ErrGetPlayStats, err)
 	}
+	go ch.syncAdviceRunToVegapunk(context.Background(), run)
 	return run, nil
 }
 
