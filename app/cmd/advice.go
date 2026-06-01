@@ -135,6 +135,14 @@ func (ch *CommandHandler) GetAdviceRuns(userId, character string, limit int) ([]
 	return runs, nil
 }
 
+func (ch *CommandHandler) DeleteAdviceRun(runId int64) error {
+	err := ch.sqlDb.DeleteAdviceRun(context.Background(), runId)
+	if err != nil {
+		return model.WrapError(model.ErrGetPlayStats, err)
+	}
+	return nil
+}
+
 func (ch *CommandHandler) SaveAdviceFeedback(runId int64, mode string, rating, specificity, usefulness, trust int, comment string) error {
 	err := ch.sqlDb.SaveAdviceFeedback(context.Background(), model.AdviceFeedback{
 		RunId:       runId,

@@ -1,11 +1,11 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-
 import * as Page from '@/ui/page'
 import { Button } from '@/ui/button'
 import { TrackingMachineContext } from '@/state/tracking-machine'
 import { AuthMachineContext } from '@/state/auth-machine'
 import {
+  DeleteAdviceRun,
   GenerateAdviceComparison,
   GetAdviceRuns,
   GetLatestAdviceRun,
@@ -28,6 +28,8 @@ export function AdvicePage() {
   const [runs, setRuns] = React.useState<model.AdviceRun[]>([])
   const [selectedMode, setSelectedMode] = React.useState('punk_record_opus_4_6')
   const [loading, setLoading] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<model.AdviceRun | null>(null)
+  const [deletingRunId, setDeletingRunId] = React.useState<number | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -95,6 +97,29 @@ export function AdvicePage() {
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
   }, [selectedUser, selectedChar])
+
+  const confirmDeleteRun = React.useCallback(
+    () => {
+      const target = deleteTarget
+      if (!target) return
+      setDeletingRunId(target.id)
+      DeleteAdviceRun(target.id)
+        .then(() => {
+          setRuns(current => {
+            const next = current.filter(item => item.id !== target.id)
+            if (run?.id === target.id) {
+              setRun(next[0] ?? null)
+            }
+            return next
+          })
+          setDeleteTarget(null)
+          setError(null)
+        })
+        .catch(e => setError(String(e)))
+        .finally(() => setDeletingRunId(null))
+    },
+    [deleteTarget, run?.id]
+  )
 
   return (
     <Page.Root>
@@ -166,20 +191,38 @@ export function AdvicePage() {
                 <div className='mb-2 text-xs text-white/50'>履歴</div>
                 <div className='flex gap-2 overflow-x-auto pb-1'>
                   {runs.map(item => (
-                    <button
+                    <div
                       key={item.id}
-                      className={`min-w-[180px] rounded px-3 py-2 text-left text-xs ${
+                      className={`flex min-w-[210px] items-stretch overflow-hidden rounded text-xs ${
                         item.id === run.id
                           ? 'bg-cyan-400/20 text-cyan-100'
                           : 'bg-white/8 text-white/70 hover:bg-white/12'
                       }`}
-                      onClick={() => setRun(item)}
                     >
-                      <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
-                      <div className='mt-1 text-white/45'>
-                        {item.character} / {item.candidates?.length ?? 0}件
-                      </div>
-                    </button>
+                      <button
+                        type='button'
+                        className='min-w-0 flex-1 px-3 py-2 text-left'
+                        onClick={() => setRun(item)}
+                      >
+                        <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
+                        <div className='mt-1 text-white/45'>
+                          {item.character} / {item.candidates?.length ?? 0}件
+                        </div>
+                      </button>
+                      <button
+                        type='button'
+                        aria-label='アドバイス履歴を削除'
+                        className={`grid w-9 shrink-0 place-items-center border-l border-white/10 text-lg leading-none ${
+                          item.id === run.id
+                            ? 'text-cyan-100/65 hover:bg-cyan-300/15 hover:text-rose-100'
+                            : 'text-white/45 hover:bg-white/12 hover:text-rose-200'
+                        }`}
+                        disabled={deletingRunId === item.id}
+                        onClick={() => setDeleteTarget(item)}
+                      >
+                        ×
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -193,6 +236,34 @@ export function AdvicePage() {
           </>
         )}
       </div>
+      {deleteTarget && (
+        <div className='fixed inset-0 z-50 grid place-items-center bg-black/60 px-6'>
+          <div className='w-full max-w-sm rounded border border-white/10 bg-zinc-950 p-5 shadow-2xl'>
+            <div className='text-base font-semibold'>アドバイス履歴を削除</div>
+            <p className='mt-3 text-sm leading-6 text-white/70'>
+              {formatJSTDateTime(deleteTarget.createdAt)} の履歴を削除します。よろしいですか？
+            </p>
+            <div className='mt-5 flex justify-end gap-2'>
+              <button
+                type='button'
+                className='rounded bg-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/15'
+                disabled={deletingRunId === deleteTarget.id}
+                onClick={() => setDeleteTarget(null)}
+              >
+                キャンセル
+              </button>
+              <button
+                type='button'
+                className='rounded bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400 disabled:opacity-50'
+                disabled={deletingRunId === deleteTarget.id}
+                onClick={confirmDeleteRun}
+              >
+                {deletingRunId === deleteTarget.id ? '削除中' : '削除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Page.Root>
   )
 }

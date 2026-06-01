@@ -523,6 +523,27 @@ func TestSaveAndListAdviceRuns(t *testing.T) {
 	if runs[1].Candidates[0].Evidence[0].Text != "evidence" {
 		t.Fatalf("evidence did not roundtrip: %+v", runs[1].Candidates[0].Evidence)
 	}
+
+	if err := store.SaveAdviceFeedback(ctx, model.AdviceFeedback{
+		RunId:       second.Id,
+		Mode:        model.AdviceModeGraphRAG,
+		Rating:      4,
+		Specificity: 4,
+		Usefulness:  4,
+		Trust:       4,
+	}); err != nil {
+		t.Fatalf("SaveAdviceFeedback: %v", err)
+	}
+	if err := store.DeleteAdviceRun(ctx, second.Id); err != nil {
+		t.Fatalf("DeleteAdviceRun: %v", err)
+	}
+	runs, err = store.GetAdviceRuns(ctx, "advice-u", "JP", 20)
+	if err != nil {
+		t.Fatalf("GetAdviceRuns after delete: %v", err)
+	}
+	if len(runs) != 1 || runs[0].Id != first.Id {
+		t.Fatalf("runs after delete = %+v, want only first run", runs)
+	}
 }
 
 func TestGetBenchmarkPlayersReturnsTopFivePerRankOffset(t *testing.T) {
