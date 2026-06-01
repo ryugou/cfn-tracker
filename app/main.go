@@ -118,7 +118,8 @@ func loadEnvFile(path string, resolve1Password bool) error {
 		return err
 	}
 	for key, value := range values {
-		if resolve1Password && strings.HasPrefix(strings.TrimSpace(value), "op://") {
+		value = strings.TrimSpace(value)
+		if resolve1Password && strings.HasPrefix(value, "op://") {
 			resolved, err := read1PasswordSecret(value)
 			if err != nil {
 				return err
@@ -137,22 +138,36 @@ func isGoTestProcess() bool {
 }
 
 func read1PasswordSecret(ref string) (string, error) {
-	cmd := exec.Command("op", "read", ref)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
+	for {
+		cmd := exec.Command("op", "read", ref)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err == nil {
+			secret := strings.TrimSpace(string(out))
+			if secret == "" {
+				return "", fmt.Errorf("read 1Password reference %q: empty value", ref)
+			}
+			return secret, nil
+		}
 		detail := strings.TrimSpace(stderr.String())
+		if isRetryable1PasswordError(detail) {
+			slog.Warn("waiting for 1Password authorization", slog.String("ref", ref), slog.String("detail", detail))
+			time.Sleep(3 * time.Second)
+			continue
+		}
 		if detail != "" {
 			return "", fmt.Errorf("read 1Password reference %q: %w: %s", ref, err, detail)
 		}
 		return "", fmt.Errorf("read 1Password reference %q: %w", ref, err)
 	}
-	secret := strings.TrimSpace(string(out))
-	if secret == "" {
-		return "", fmt.Errorf("read 1Password reference %q: empty value", ref)
-	}
-	return secret, nil
+}
+
+func isRetryable1PasswordError(detail string) bool {
+	detail = strings.ToLower(detail)
+	return strings.Contains(detail, "authorization timeout") ||
+		strings.Contains(detail, "couldn't connect to the 1password desktop app") ||
+		strings.Contains(detail, "could not connect to the 1password desktop app")
 }
 
 func envFilePath() string {

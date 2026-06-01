@@ -151,6 +151,8 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 				snap := buildSnapshot(userCode, res, "")
 				if err := ch.sqlDb.SavePlayStats(ctx, snap); err != nil {
 					slog.Warn("save baseline play stats failed", slog.Any("error", err))
+				} else {
+					go ch.syncLatestPlayStatsToVegapunk(context.Background(), userCode)
 				}
 			} else {
 				slog.Warn("baseline play stats fetch failed", slog.Any("error", err))
@@ -265,6 +267,7 @@ func (ch *TrackingHandler) StartTracking(userCodeInput string, restore bool) err
 			slog.Error("save match to database", slog.Any("error", err))
 			break
 		}
+		go ch.syncMatchToVegapunk(context.Background(), match)
 		if err := ch.txtDb.SaveMatch(match); err != nil {
 			slog.Error("save to text files:", slog.Any("error", err))
 			break
@@ -374,6 +377,7 @@ func (ch *TrackingHandler) backfillSf6(ctx context.Context, session *model.Sessi
 			)
 			continue
 		}
+		go ch.syncMatchToVegapunk(context.Background(), match)
 		// Try to persist the session next. If this fails, the match row is in
 		// the DB but the session aggregate is stale — preserve the DB ordering
 		// by mutating the in-memory session only after UpdateSession succeeds.
@@ -483,6 +487,8 @@ func (ch *TrackingHandler) playStatsSf6(
 	snap := buildSnapshot(userCode, res, matchReplayId)
 	if err := ch.sqlDb.SavePlayStats(ctx, snap); err != nil {
 		slog.Warn("save play stats failed", slog.Any("error", err))
+	} else {
+		go ch.syncLatestPlayStatsToVegapunk(context.Background(), userCode)
 	}
 }
 
