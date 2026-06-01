@@ -28,6 +28,7 @@ export function AdvicePage() {
   const [runs, setRuns] = React.useState<model.AdviceRun[]>([])
   const [selectedMode, setSelectedMode] = React.useState('punk_record_opus_4_6')
   const [loading, setLoading] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<model.AdviceRun | null>(null)
   const [deletingRunId, setDeletingRunId] = React.useState<number | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -97,9 +98,10 @@ export function AdvicePage() {
       .finally(() => setLoading(false))
   }, [selectedUser, selectedChar])
 
-  const deleteRun = React.useCallback(
-    (target: model.AdviceRun) => {
-      if (!window.confirm('このアドバイス履歴を削除します。よろしいですか？')) return
+  const confirmDeleteRun = React.useCallback(
+    () => {
+      const target = deleteTarget
+      if (!target) return
       setDeletingRunId(target.id)
       DeleteAdviceRun(target.id)
         .then(() => {
@@ -110,12 +112,13 @@ export function AdvicePage() {
             }
             return next
           })
+          setDeleteTarget(null)
           setError(null)
         })
         .catch(e => setError(String(e)))
         .finally(() => setDeletingRunId(null))
     },
-    [run?.id]
+    [deleteTarget, run?.id]
   )
 
   return (
@@ -215,7 +218,7 @@ export function AdvicePage() {
                             : 'text-white/45 hover:bg-white/12 hover:text-rose-200'
                         }`}
                         disabled={deletingRunId === item.id}
-                        onClick={() => deleteRun(item)}
+                        onClick={() => setDeleteTarget(item)}
                       >
                         ×
                       </button>
@@ -233,6 +236,34 @@ export function AdvicePage() {
           </>
         )}
       </div>
+      {deleteTarget && (
+        <div className='fixed inset-0 z-50 grid place-items-center bg-black/60 px-6'>
+          <div className='w-full max-w-sm rounded border border-white/10 bg-zinc-950 p-5 shadow-2xl'>
+            <div className='text-base font-semibold'>アドバイス履歴を削除</div>
+            <p className='mt-3 text-sm leading-6 text-white/70'>
+              {formatJSTDateTime(deleteTarget.createdAt)} の履歴を削除します。よろしいですか？
+            </p>
+            <div className='mt-5 flex justify-end gap-2'>
+              <button
+                type='button'
+                className='rounded bg-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/15'
+                disabled={deletingRunId === deleteTarget.id}
+                onClick={() => setDeleteTarget(null)}
+              >
+                キャンセル
+              </button>
+              <button
+                type='button'
+                className='rounded bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-400 disabled:opacity-50'
+                disabled={deletingRunId === deleteTarget.id}
+                onClick={confirmDeleteRun}
+              >
+                {deletingRunId === deleteTarget.id ? '削除中' : '削除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Page.Root>
   )
 }
