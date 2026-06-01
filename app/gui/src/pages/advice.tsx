@@ -1,7 +1,5 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Icon } from '@iconify/react'
-
 import * as Page from '@/ui/page'
 import { Button } from '@/ui/button'
 import { TrackingMachineContext } from '@/state/tracking-machine'
@@ -190,27 +188,44 @@ export function AdvicePage() {
                 <div className='mb-2 text-xs text-white/50'>履歴</div>
                 <div className='flex gap-2 overflow-x-auto pb-1'>
                   {runs.map(item => (
-                    <div key={item.id} className='relative min-w-[180px]'>
+                    <div
+                      key={item.id}
+                      role='button'
+                      tabIndex={0}
+                      className={`relative min-w-[180px] rounded px-3 py-2 pr-8 text-left text-xs ${
+                        item.id === run.id
+                          ? 'bg-cyan-400/20 text-cyan-100'
+                          : 'bg-white/8 text-white/70 hover:bg-white/12'
+                      }`}
+                      onClick={() => setRun(item)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') setRun(item)
+                      }}
+                    >
+                      <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
+                      <div className='mt-1 text-white/45'>
+                        {item.character} / {item.candidates?.length ?? 0}件
+                      </div>
                       <button
-                        className={`h-full w-full rounded px-3 py-2 pr-8 text-left text-xs ${
-                          item.id === run.id
-                            ? 'bg-cyan-400/20 text-cyan-100'
-                            : 'bg-white/8 text-white/70 hover:bg-white/12'
-                        }`}
-                        onClick={() => setRun(item)}
-                      >
-                        <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
-                        <div className='mt-1 text-white/45'>
-                          {item.character} / {item.candidates?.length ?? 0}件
-                        </div>
-                      </button>
-                      <button
+                        type='button'
                         aria-label='アドバイス履歴を削除'
-                        className='absolute top-1 right-1 grid h-6 w-6 place-items-center rounded text-white/45 hover:bg-white/12 hover:text-rose-200 disabled:opacity-40'
+                        className={`absolute top-1 right-1 z-10 grid h-6 w-6 place-items-center rounded text-base leading-none ${
+                          item.id === run.id
+                            ? 'text-cyan-100/65 hover:bg-cyan-300/15 hover:text-rose-100'
+                            : 'text-white/45 hover:bg-white/12 hover:text-rose-200'
+                        }`}
                         disabled={deletingRunId === item.id}
-                        onClick={() => deleteRun(item)}
+                        onPointerDown={event => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                        }}
+                        onClick={event => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          deleteRun(item)
+                        }}
                       >
-                        <Icon icon='ci:close-big' width={14} />
+                        ×
                       </button>
                     </div>
                   ))}
