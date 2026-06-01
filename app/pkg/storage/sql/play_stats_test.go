@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -49,6 +50,65 @@ func newTestStorage() (*Storage, error) {
 		}
 	}
 	return &Storage{db: db}, nil
+}
+
+func TestVegapunkSyncQueueLifecycle(t *testing.T) {
+	ctx := context.Background()
+	s, err := newTestStorage()
+	if err != nil {
+		t.Fatalf("newTestStorage: %v", err)
+	}
+
+	if err := s.EnqueueVegapunkSyncJob(ctx, "match", "match:u:replay-1", []byte(`{"nodes":[{"id":"n1"}]}`)); err != nil {
+		t.Fatalf("EnqueueVegapunkSyncJob: %v", err)
+	}
+	jobs, err := s.GetDueVegapunkSyncJobs(ctx, 10)
+	if err != nil {
+		t.Fatalf("GetDueVegapunkSyncJobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1", len(jobs))
+	}
+	if jobs[0].Attempts != 0 || jobs[0].ProcessedAt != "" {
+		t.Fatalf("unexpected initial job state: %+v", jobs[0])
+	}
+
+	next := time.Now().Add(time.Hour)
+	if err := s.MarkVegapunkSyncJobFailed(ctx, jobs[0].Id, 1, "temporary failure", next); err != nil {
+		t.Fatalf("MarkVegapunkSyncJobFailed: %v", err)
+	}
+	jobs, err = s.GetDueVegapunkSyncJobs(ctx, 10)
+	if err != nil {
+		t.Fatalf("GetDueVegapunkSyncJobs after failure: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("jobs after future retry = %d, want 0", len(jobs))
+	}
+
+	if err := s.EnqueueVegapunkSyncJob(ctx, "match", "match:u:replay-1", []byte(`{"nodes":[{"id":"n2"}]}`)); err != nil {
+		t.Fatalf("re-enqueue: %v", err)
+	}
+	jobs, err = s.GetDueVegapunkSyncJobs(ctx, 10)
+	if err != nil {
+		t.Fatalf("GetDueVegapunkSyncJobs after re-enqueue: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs after re-enqueue = %d, want 1", len(jobs))
+	}
+	if jobs[0].Attempts != 0 || jobs[0].LastError != "" || !strings.Contains(jobs[0].PayloadJSON, "n2") {
+		t.Fatalf("re-enqueue did not reset job: %+v", jobs[0])
+	}
+
+	if err := s.MarkVegapunkSyncJobDone(ctx, jobs[0].Id); err != nil {
+		t.Fatalf("MarkVegapunkSyncJobDone: %v", err)
+	}
+	jobs, err = s.GetDueVegapunkSyncJobs(ctx, 10)
+	if err != nil {
+		t.Fatalf("GetDueVegapunkSyncJobs after done: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("jobs after done = %d, want 0", len(jobs))
+	}
 }
 
 func TestMain(m *testing.M) {
