@@ -215,10 +215,6 @@ export function AdvicePage() {
                             : 'text-white/45 hover:bg-white/12 hover:text-rose-200'
                         }`}
                         disabled={deletingRunId === item.id}
-                        onPointerDown={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                        }}
                         onClick={event => {
                           event.preventDefault()
                           event.stopPropagation()
