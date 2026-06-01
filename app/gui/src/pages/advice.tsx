@@ -190,36 +190,32 @@ export function AdvicePage() {
                   {runs.map(item => (
                     <div
                       key={item.id}
-                      role='button'
-                      tabIndex={0}
-                      className={`relative min-w-[180px] rounded px-3 py-2 pr-8 text-left text-xs ${
+                      className={`flex min-w-[210px] items-stretch overflow-hidden rounded text-xs ${
                         item.id === run.id
                           ? 'bg-cyan-400/20 text-cyan-100'
                           : 'bg-white/8 text-white/70 hover:bg-white/12'
                       }`}
-                      onClick={() => setRun(item)}
-                      onKeyDown={event => {
-                        if (event.key === 'Enter' || event.key === ' ') setRun(item)
-                      }}
                     >
-                      <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
-                      <div className='mt-1 text-white/45'>
-                        {item.character} / {item.candidates?.length ?? 0}件
-                      </div>
+                      <button
+                        type='button'
+                        className='min-w-0 flex-1 px-3 py-2 text-left'
+                        onClick={() => setRun(item)}
+                      >
+                        <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
+                        <div className='mt-1 text-white/45'>
+                          {item.character} / {item.candidates?.length ?? 0}件
+                        </div>
+                      </button>
                       <button
                         type='button'
                         aria-label='アドバイス履歴を削除'
-                        className={`absolute top-1 right-1 z-10 grid h-6 w-6 place-items-center rounded text-base leading-none ${
+                        className={`grid w-9 shrink-0 place-items-center border-l border-white/10 text-lg leading-none ${
                           item.id === run.id
                             ? 'text-cyan-100/65 hover:bg-cyan-300/15 hover:text-rose-100'
                             : 'text-white/45 hover:bg-white/12 hover:text-rose-200'
                         }`}
                         disabled={deletingRunId === item.id}
-                        onClick={event => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          deleteRun(item)
-                        }}
+                        onClick={() => deleteRun(item)}
                       >
                         ×
                       </button>
