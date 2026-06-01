@@ -1,11 +1,13 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { Icon } from '@iconify/react'
 
 import * as Page from '@/ui/page'
 import { Button } from '@/ui/button'
 import { TrackingMachineContext } from '@/state/tracking-machine'
 import { AuthMachineContext } from '@/state/auth-machine'
 import {
+  DeleteAdviceRun,
   GenerateAdviceComparison,
   GetAdviceRuns,
   GetLatestAdviceRun,
@@ -28,6 +30,7 @@ export function AdvicePage() {
   const [runs, setRuns] = React.useState<model.AdviceRun[]>([])
   const [selectedMode, setSelectedMode] = React.useState('punk_record_opus_4_6')
   const [loading, setLoading] = React.useState(false)
+  const [deletingRunId, setDeletingRunId] = React.useState<number | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -95,6 +98,27 @@ export function AdvicePage() {
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
   }, [selectedUser, selectedChar])
+
+  const deleteRun = React.useCallback(
+    (target: model.AdviceRun) => {
+      if (!window.confirm('このアドバイス履歴を削除します。よろしいですか？')) return
+      setDeletingRunId(target.id)
+      DeleteAdviceRun(target.id)
+        .then(() => {
+          setRuns(current => {
+            const next = current.filter(item => item.id !== target.id)
+            if (run?.id === target.id) {
+              setRun(next[0] ?? null)
+            }
+            return next
+          })
+          setError(null)
+        })
+        .catch(e => setError(String(e)))
+        .finally(() => setDeletingRunId(null))
+    },
+    [run?.id]
+  )
 
   return (
     <Page.Root>
@@ -166,20 +190,29 @@ export function AdvicePage() {
                 <div className='mb-2 text-xs text-white/50'>履歴</div>
                 <div className='flex gap-2 overflow-x-auto pb-1'>
                   {runs.map(item => (
-                    <button
-                      key={item.id}
-                      className={`min-w-[180px] rounded px-3 py-2 text-left text-xs ${
-                        item.id === run.id
-                          ? 'bg-cyan-400/20 text-cyan-100'
-                          : 'bg-white/8 text-white/70 hover:bg-white/12'
-                      }`}
-                      onClick={() => setRun(item)}
-                    >
-                      <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
-                      <div className='mt-1 text-white/45'>
-                        {item.character} / {item.candidates?.length ?? 0}件
-                      </div>
-                    </button>
+                    <div key={item.id} className='relative min-w-[180px]'>
+                      <button
+                        className={`h-full w-full rounded px-3 py-2 pr-8 text-left text-xs ${
+                          item.id === run.id
+                            ? 'bg-cyan-400/20 text-cyan-100'
+                            : 'bg-white/8 text-white/70 hover:bg-white/12'
+                        }`}
+                        onClick={() => setRun(item)}
+                      >
+                        <div className='font-medium'>{formatJSTDateTime(item.createdAt)}</div>
+                        <div className='mt-1 text-white/45'>
+                          {item.character} / {item.candidates?.length ?? 0}件
+                        </div>
+                      </button>
+                      <button
+                        aria-label='アドバイス履歴を削除'
+                        className='absolute top-1 right-1 grid h-6 w-6 place-items-center rounded text-white/45 hover:bg-white/12 hover:text-rose-200 disabled:opacity-40'
+                        disabled={deletingRunId === item.id}
+                        onClick={() => deleteRun(item)}
+                      >
+                        <Icon icon='ci:close-big' width={14} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
