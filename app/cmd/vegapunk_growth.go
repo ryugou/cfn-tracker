@@ -12,9 +12,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
+	"github.com/williamsjokvist/cfn-tracker/pkg/storage/sql"
 )
 
 const (
@@ -25,7 +27,10 @@ const (
 	vegapunkTokenEnvKey         = "VEGAPUNK_TOKEN"
 	vegapunkGrowthSyncTimeout   = 5 * time.Minute
 	vegapunkGrowthBackfillLimit = 200
+	vegapunkSyncQueueBatchSize  = 20
 )
+
+var vegapunkSyncQueueMu sync.Mutex
 
 type vegapunkNode struct {
 	ID         string              `json:"id"`
@@ -66,6 +71,20 @@ type growthMetric struct {
 
 func (ch *CommandHandler) SyncVegapunkGrowthData(userId, character string) error {
 	return ch.syncVegapunkGrowthData(context.Background(), userId, character)
+}
+
+func StartVegapunkSyncQueue(ctx context.Context, db *sql.Storage) {
+	go processVegapunkSyncQueue(context.Background(), db)
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			processVegapunkSyncQueue(context.Background(), db)
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (ch *CommandHandler) syncVegapunkGrowthData(ctx context.Context, userId, character string) error {
@@ -121,16 +140,13 @@ func (ch *CommandHandler) syncVegapunkGrowthData(ctx context.Context, userId, ch
 	if len(graph.Nodes) == 0 {
 		return nil
 	}
-	if err := upsertVegapunkGrowthGraph(ctx, &graph); err != nil {
-		return fmt.Errorf("upsert vegapunk growth data: %w", err)
+	if err := enqueueVegapunkGraph(ctx, ch.sqlDb, "backfill", vegapunkDedupeKey("backfill", userId, character), &graph); err != nil {
+		return fmt.Errorf("enqueue vegapunk growth data: %w", err)
 	}
-	return nil
+	return ch.processVegapunkSyncQueue(ctx)
 }
 
 func (ch *TrackingHandler) syncMatchToVegapunk(ctx context.Context, match model.Match) {
-	if !vegapunkConfigured() {
-		return
-	}
 	graph := vegapunkGraph{}
 	playerID := vegapunkPlayerID(match.UserId)
 	graph.addNode("Player", playerID, map[string]string{
@@ -138,15 +154,15 @@ func (ch *TrackingHandler) syncMatchToVegapunk(ctx context.Context, match model.
 		"text":    fmt.Sprintf("CFN player %s", match.UserId),
 	})
 	graph.addMatch(playerID, match)
-	if err := upsertVegapunkGrowthGraph(ctx, &graph); err != nil {
-		slog.Warn("vegapunk match sync failed", slog.String("replay_id", match.ReplayID), slog.Any("error", err))
+	dedupe := vegapunkDedupeKey("match", match.UserId, firstNonEmpty(match.ReplayID, fmt.Sprintf("%d-%s-%s", match.SessionId, match.Date, match.Time)))
+	if err := enqueueVegapunkGraph(ctx, ch.sqlDb, "match", dedupe, &graph); err != nil {
+		slog.Warn("vegapunk match enqueue failed", slog.String("replay_id", match.ReplayID), slog.Any("error", err))
+		return
 	}
+	go processVegapunkSyncQueue(context.Background(), ch.sqlDb)
 }
 
 func (ch *TrackingHandler) syncLatestPlayStatsToVegapunk(ctx context.Context, userId string) {
-	if !vegapunkConfigured() {
-		return
-	}
 	rows, err := ch.sqlDb.GetRecentPlayStatsSnapshots(ctx, userId, 2)
 	if err != nil {
 		slog.Warn("vegapunk play stats sync lookup failed", slog.Any("error", err))
@@ -166,13 +182,17 @@ func (ch *TrackingHandler) syncLatestPlayStatsToVegapunk(ctx context.Context, us
 		"text":    fmt.Sprintf("CFN player %s", userId),
 	})
 	graph.addPlayStatsSnapshot(playerID, *rows[len(rows)-1], previous)
-	if err := upsertVegapunkGrowthGraph(ctx, &graph); err != nil {
-		slog.Warn("vegapunk play stats sync failed", slog.Any("error", err))
+	latest := rows[len(rows)-1]
+	dedupe := vegapunkDedupeKey("play_stats", userId, strconv.FormatInt(latest.Id, 10), latest.SnapshotAt)
+	if err := enqueueVegapunkGraph(ctx, ch.sqlDb, "play_stats", dedupe, &graph); err != nil {
+		slog.Warn("vegapunk play stats enqueue failed", slog.Any("error", err))
+		return
 	}
+	go processVegapunkSyncQueue(context.Background(), ch.sqlDb)
 }
 
 func (ch *CommandHandler) syncAdviceRunToVegapunk(ctx context.Context, run *model.AdviceRun) {
-	if run == nil || !vegapunkConfigured() {
+	if run == nil {
 		return
 	}
 	graph := vegapunkGraph{}
@@ -182,9 +202,96 @@ func (ch *CommandHandler) syncAdviceRunToVegapunk(ctx context.Context, run *mode
 		"text":    fmt.Sprintf("CFN player %s", run.UserId),
 	})
 	graph.addAdviceRun(playerID, *run)
-	if err := upsertVegapunkGrowthGraph(ctx, &graph); err != nil {
-		slog.Warn("vegapunk advice sync failed", slog.Int64("run_id", run.Id), slog.Any("error", err))
+	dedupe := vegapunkDedupeKey("advice", run.UserId, run.Character, strconv.FormatInt(run.Id, 10))
+	if err := enqueueVegapunkGraph(ctx, ch.sqlDb, "advice", dedupe, &graph); err != nil {
+		slog.Warn("vegapunk advice enqueue failed", slog.Int64("run_id", run.Id), slog.Any("error", err))
+		return
 	}
+	go ch.processVegapunkSyncQueue(context.Background())
+}
+
+func (ch *CommandHandler) processVegapunkSyncQueue(ctx context.Context) error {
+	return processVegapunkSyncQueue(ctx, ch.sqlDb)
+}
+
+func enqueueVegapunkGraph(ctx context.Context, db *sql.Storage, kind, dedupeKey string, graph *vegapunkGraph) error {
+	if db == nil || graph == nil || len(graph.Nodes) == 0 {
+		return nil
+	}
+	graph.dedupe()
+	payload, err := json.Marshal(graph)
+	if err != nil {
+		return fmt.Errorf("marshal vegapunk sync graph: %w", err)
+	}
+	if err := db.EnqueueVegapunkSyncJob(ctx, kind, dedupeKey, payload); err != nil {
+		return err
+	}
+	return nil
+}
+
+func processVegapunkSyncQueue(ctx context.Context, db *sql.Storage) error {
+	if db == nil {
+		return nil
+	}
+	if !vegapunkConfigured() {
+		return nil
+	}
+	if !vegapunkSyncQueueMu.TryLock() {
+		return nil
+	}
+	defer vegapunkSyncQueueMu.Unlock()
+
+	for {
+		jobs, err := db.GetDueVegapunkSyncJobs(ctx, vegapunkSyncQueueBatchSize)
+		if err != nil {
+			return err
+		}
+		if len(jobs) == 0 {
+			return nil
+		}
+		for _, job := range jobs {
+			if job == nil {
+				continue
+			}
+			var graph vegapunkGraph
+			if err := json.Unmarshal([]byte(job.PayloadJSON), &graph); err != nil {
+				if markErr := db.MarkVegapunkSyncJobFailed(ctx, job.Id, job.Attempts+1, err.Error(), nextVegapunkRetryAt(job.Attempts+1)); markErr != nil {
+					slog.Warn("mark malformed vegapunk sync job failed", slog.Int64("job_id", job.Id), slog.Any("error", markErr))
+				}
+				continue
+			}
+			if err := upsertVegapunkGrowthGraph(ctx, &graph); err != nil {
+				attempts := job.Attempts + 1
+				if markErr := db.MarkVegapunkSyncJobFailed(ctx, job.Id, attempts, err.Error(), nextVegapunkRetryAt(attempts)); markErr != nil {
+					slog.Warn("mark vegapunk sync job failed", slog.Int64("job_id", job.Id), slog.Any("error", markErr))
+				}
+				slog.Warn("vegapunk sync job failed; queued for retry", slog.Int64("job_id", job.Id), slog.String("kind", job.Kind), slog.Int("attempts", attempts), slog.Any("error", err))
+				continue
+			}
+			if err := db.MarkVegapunkSyncJobDone(ctx, job.Id); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func nextVegapunkRetryAt(attempts int) time.Time {
+	if attempts < 1 {
+		attempts = 1
+	}
+	delay := time.Duration(1<<min(attempts-1, 6)) * time.Minute
+	return time.Now().Add(delay)
+}
+
+func vegapunkDedupeKey(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, ":")
 }
 
 func (g *vegapunkGraph) addMatch(playerID string, match model.Match) {
@@ -421,6 +528,9 @@ func upsertVegapunkGrowthGraph(ctx context.Context, graph *vegapunkGraph) error 
 				"type":         node.Type,
 			},
 		})
+	}
+	if len(graph.Nodes) > 0 && len(graph.Vectors) == 0 {
+		return fmt.Errorf("created 0 vectors for %d nodes", len(graph.Nodes))
 	}
 
 	body, err := json.Marshal(graph)

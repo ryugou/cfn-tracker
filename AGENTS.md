@@ -244,6 +244,29 @@ User evaluation for generated advice.
 - `comment` TEXT NOT NULL DEFAULT ''
 - `created_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
 
+### vegapunk_sync_queue
+
+Persistent retry queue for PunkRecord/vegapunk growth-data sync.
+
+- `id` INTEGER PRIMARY KEY AUTOINCREMENT
+- `kind` TEXT NOT NULL
+- `dedupe_key` TEXT NOT NULL UNIQUE
+- `payload_json` TEXT NOT NULL
+- `attempts` INTEGER NOT NULL DEFAULT 0
+- `last_error` TEXT NOT NULL DEFAULT ''
+- `next_attempt_at` TEXT NOT NULL DEFAULT ''
+- `processed_at` TEXT NOT NULL DEFAULT ''
+- `created_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+- `updated_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+
+Behavior:
+
+- Match, play-stat snapshot, and advice-run saves enqueue graph payloads here first.
+- A background worker sends due jobs to vegapunk.
+- Success fills `processed_at`.
+- Failure keeps the row, increments `attempts`, records `last_error`, and sets `next_attempt_at` using exponential backoff.
+- The app should not treat a saved local DB row as synced to PunkRecord unless the corresponding queue row has `processed_at` set.
+
 ## Advice Generation
 
 Command entry point:
