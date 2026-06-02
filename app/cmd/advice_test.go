@@ -278,14 +278,20 @@ func TestRequestAdviceLLMReportsTruncatedResponse(t *testing.T) {
 	}
 }
 
-func TestIsRecursivePunkRecordEvidence(t *testing.T) {
-	if !isRecursivePunkRecordEvidence("sf6-advice:gen1:advice_candidate:1766731922:74") {
+func TestIsPunkRecordSearchNoise(t *testing.T) {
+	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_candidate:1766731922:74", "adviceaction", "") {
 		t.Fatal("expected advice_candidate id to be recursive")
 	}
-	if !isRecursivePunkRecordEvidence("sf6-advice:gen1:advice_evidence:1766731922:75:vegapunk:message") {
+	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_evidence:1766731922:75:vegapunk:message", "evidence", "") {
 		t.Fatal("expected advice_evidence id to be recursive")
 	}
-	if isRecursivePunkRecordEvidence("sf6-advice:gen1:metric-just_parry") {
+	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_run:1766731922:27", "evidence", "Advice run 27 for user 1766731922") {
+		t.Fatal("expected advice_run id to be search noise")
+	}
+	if !isPunkRecordSearchNoise("sf6-advice:gen1:player:1766731922", "evidence", "CFN player 1766731922") {
+		t.Fatal("expected player id to be search noise")
+	}
+	if isPunkRecordSearchNoise("sf6-advice:gen1:metric-just_parry", "metric", "Perfect Parry / Just Parry") {
 		t.Fatal("metric id should not be recursive")
 	}
 }

@@ -446,6 +446,7 @@ func adviceSystemPrompt(mode model.AdviceMode) string {
 		"あなたはStreet Fighter 6の分析コーチです。",
 		"目的は、プレイヤーの現在値、直近推移、ベンチマーク差分から、次に実行する施策カードを1つ作ることです。",
 		"観測事実と推定を分け、因果を断定しすぎないでください。",
+		"「因果的に連動」「証拠となる」「証明する」など、因果証明を示す表現は禁止です。「関連している可能性」「改善を示唆する」に留めてください。",
 		"短期間で言うことを変えすぎず、成功条件と副作用として監視する指標を必ず含めてください。",
 		modeInstruction,
 		"返答はJSONのみ。Markdownや説明文は不要です。",
@@ -766,12 +767,12 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	}
 	evidence := make([]model.AdviceEvidence, 0, len(res.Results))
 	for _, row := range res.Results {
-		if isRecursivePunkRecordEvidence(row.ID) {
-			continue
-		}
 		text := row.Text
 		if text == "" {
 			text = row.Summary
+		}
+		if isPunkRecordSearchNoise(row.ID, row.Type, text) {
+			continue
 		}
 		title := row.Type
 		if title == "" || title == "message" {
@@ -785,8 +786,20 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	return evidence
 }
 
-func isRecursivePunkRecordEvidence(id string) bool {
-	return strings.Contains(id, ":advice_evidence:") || strings.Contains(id, ":advice_candidate:")
+func isPunkRecordSearchNoise(id, nodeType, text string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	nodeType = strings.ToLower(strings.TrimSpace(nodeType))
+	text = strings.TrimSpace(text)
+	if strings.Contains(id, ":advice_evidence:") ||
+		strings.Contains(id, ":advice_candidate:") ||
+		strings.Contains(id, ":advice_run:") ||
+		strings.Contains(id, ":player:") {
+		return true
+	}
+	if nodeType == "evidence" {
+		return strings.HasPrefix(text, "Advice run ") || strings.HasPrefix(text, "CFN player ")
+	}
+	return false
 }
 
 func vegapunkSearchTimeout() time.Duration {
