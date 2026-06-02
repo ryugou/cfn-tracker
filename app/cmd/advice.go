@@ -23,6 +23,7 @@ import (
 
 const (
 	adviceInputWindow           = 30
+	maxAdviceCharacterKnowledge = 10
 	defaultAnthropicBaseURL     = "https://api.anthropic.com/v1"
 	defaultAnthropicVersion     = "2023-06-01"
 	defaultAnthropicOpusModel   = "claude-opus-4-6"
@@ -241,13 +242,14 @@ func (ch *CommandHandler) characterKnowledgeForAdvice(ctx context.Context, chara
 	if slug == "" {
 		return nil
 	}
-	terms := adviceCharacterKnowledgeTerms(signals)
-	moves, err := ch.sqlDb.FindSF6CharacterMoves(ctx, slug, "ja-jp", terms, 32)
+	moves, err := ch.sqlDb.GetSF6CharacterMoves(ctx, slug, "ja-jp", 500)
 	if err != nil || len(moves) == 0 {
 		return nil
 	}
-	out := make([]adviceCharacterMoveForPrompt, 0, len(moves))
-	for _, move := range moves {
+	top := firstMeaningfulSignal(signals)
+	selected := selectCharacterKnowledgeMoves(moves, top.key, maxAdviceCharacterKnowledge)
+	out := make([]adviceCharacterMoveForPrompt, 0, len(selected))
+	for _, move := range selected {
 		out = append(out, adviceCharacterMoveForPrompt{
 			Source:         move.Source,
 			Category:       move.Category,
@@ -268,23 +270,179 @@ func (ch *CommandHandler) characterKnowledgeForAdvice(ctx context.Context, chara
 	return out
 }
 
-func adviceCharacterKnowledgeTerms(signals []adviceSignal) []string {
-	terms := []string{"ドライブインパクト", "ドライブリバーサル", "ドライブパリィ", "キャンセル", "弱", "通常技", "特殊技", "必殺技", "投げ"}
-	for _, signal := range signals {
-		switch signal.key {
-		case "received_drive_impact":
-			terms = append(terms, "DI", "ドライブインパクト", "キャンセル", "SA")
-		case "just_parry":
-			terms = append(terms, "ジャストパリィ", "ドライブパリィ")
-		case "throw_tech", "throw_count":
-			terms = append(terms, "投げ", "通常投げ")
-		case "cornered_time":
-			terms = append(terms, "ドライブリバーサル", "ジャンプ", "キャンセル")
-		case "received_punish_counter":
-			terms = append(terms, "硬直", "ガード", "キャンセル")
+func selectCharacterKnowledgeMoves(moves []model.SF6CharacterMove, signalKey string, limit int) []model.SF6CharacterMove {
+	if limit <= 0 {
+		limit = maxAdviceCharacterKnowledge
+	}
+	out := make([]model.SF6CharacterMove, 0, limit)
+	seen := map[string]bool{}
+	add := func(move model.SF6CharacterMove) {
+		if len(out) >= limit || move.Name == "" {
+			return
+		}
+		key := strings.Join([]string{move.Source, move.Category, move.Name, move.Command, move.Startup, move.Active}, "\x00")
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, move)
+	}
+	addWhere := func(max int, pred func(model.SF6CharacterMove) bool) {
+		added := 0
+		for _, move := range moves {
+			if len(out) >= limit || added >= max {
+				return
+			}
+			if pred(move) {
+				before := len(out)
+				add(move)
+				if len(out) > before {
+					added++
+				}
+			}
 		}
 	}
-	return dedupeStrings(terms)
+
+	switch signalKey {
+	case "received_drive_impact":
+		addWhere(1, func(move model.SF6CharacterMove) bool {
+			return strings.Contains(move.Name, "ドライブインパクト")
+		})
+		addWhere(1, func(move model.SF6CharacterMove) bool {
+			return strings.Contains(move.Name, "ドライブリバーサル")
+		})
+		for _, move := range topCancelableNormals(moves, 4) {
+			add(move)
+		}
+		for _, move := range topRiskyNormals(moves, 3) {
+			add(move)
+		}
+	case "just_parry":
+		addWhere(2, func(move model.SF6CharacterMove) bool {
+			return strings.Contains(move.Name, "ジャストパリィ") || strings.Contains(move.Name, "ドライブパリィ")
+		})
+		addWhere(3, func(move model.SF6CharacterMove) bool {
+			return isFastNormal(move)
+		})
+	case "throw_tech", "throw_count":
+		addWhere(4, func(move model.SF6CharacterMove) bool {
+			return move.Category == "通常投げ" || strings.Contains(move.Name, "投げ")
+		})
+		addWhere(3, func(move model.SF6CharacterMove) bool {
+			return isFastNormal(move)
+		})
+	case "cornered_time":
+		addWhere(2, func(move model.SF6CharacterMove) bool {
+			return strings.Contains(move.Name, "ドライブリバーサル") || strings.Contains(move.Name, "ドライブパリィ")
+		})
+		for _, move := range topCancelableNormals(moves, 4) {
+			add(move)
+		}
+		for _, move := range topRiskyNormals(moves, 2) {
+			add(move)
+		}
+	case "received_punish_counter":
+		for _, move := range topRiskyNormals(moves, 5) {
+			add(move)
+		}
+		for _, move := range topCancelableNormals(moves, 3) {
+			add(move)
+		}
+	default:
+		addWhere(2, func(move model.SF6CharacterMove) bool {
+			return move.Category == "共通システム"
+		})
+		for _, move := range topCancelableNormals(moves, 4) {
+			add(move)
+		}
+	}
+	return out
+}
+
+func topCancelableNormals(moves []model.SF6CharacterMove, limit int) []model.SF6CharacterMove {
+	rows := make([]model.SF6CharacterMove, 0)
+	for _, move := range moves {
+		if move.Category == "通常技" && strings.Contains(move.Cancel, "C") {
+			rows = append(rows, move)
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		si, _ := firstSignedInt(rows[i].Startup)
+		sj, _ := firstSignedInt(rows[j].Startup)
+		if si != sj {
+			return si < sj
+		}
+		ri, _ := firstSignedInt(rows[i].Recovery)
+		rj, _ := firstSignedInt(rows[j].Recovery)
+		return ri < rj
+	})
+	if len(rows) > limit {
+		return rows[:limit]
+	}
+	return rows
+}
+
+func topRiskyNormals(moves []model.SF6CharacterMove, limit int) []model.SF6CharacterMove {
+	rows := make([]model.SF6CharacterMove, 0)
+	for _, move := range moves {
+		if move.Category != "通常技" {
+			continue
+		}
+		recovery, hasRecovery := firstSignedInt(move.Recovery)
+		block, hasBlock := firstSignedInt(move.BlockAdvantage)
+		if (hasRecovery && recovery >= 19) || (hasBlock && block <= -3) {
+			rows = append(rows, move)
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		ri, _ := firstSignedInt(rows[i].Recovery)
+		rj, _ := firstSignedInt(rows[j].Recovery)
+		if ri != rj {
+			return ri > rj
+		}
+		bi, _ := firstSignedInt(rows[i].BlockAdvantage)
+		bj, _ := firstSignedInt(rows[j].BlockAdvantage)
+		return bi < bj
+	})
+	if len(rows) > limit {
+		return rows[:limit]
+	}
+	return rows
+}
+
+func isFastNormal(move model.SF6CharacterMove) bool {
+	startup, ok := firstSignedInt(move.Startup)
+	return ok && move.Category == "通常技" && startup <= 5
+}
+
+func firstSignedInt(text string) (int, bool) {
+	start := -1
+	for i, r := range text {
+		if r == '-' || ('0' <= r && r <= '9') {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return 0, false
+	}
+	end := start
+	for end < len(text) {
+		ch := text[end]
+		if end == start && ch == '-' {
+			end++
+			continue
+		}
+		if ch < '0' || ch > '9' {
+			break
+		}
+		end++
+	}
+	n, err := strconv.Atoi(text[start:end])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
 
 func makeSignal(key, label string, self, benchmark, trend float64, higherGood bool, description string) adviceSignal {

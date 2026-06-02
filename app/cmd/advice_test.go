@@ -293,6 +293,44 @@ func TestAdviceSystemPromptGroundsCharacterSpecificClaims(t *testing.T) {
 	}
 }
 
+func TestSelectCharacterKnowledgeMovesForDriveImpactIsSmallAndRelevant(t *testing.T) {
+	moves := []model.SF6CharacterMove{
+		{Source: "frame", Category: "共通システム", Name: "ドライブインパクト（トゥインクルキック）", Command: "強強", Startup: "26", BlockAdvantage: "-3"},
+		{Source: "frame", Category: "共通システム", Name: "ドライブリバーサル（リアフライト）", Command: "強強", Startup: "20", BlockAdvantage: "-8"},
+		{Source: "frame", Category: "通常技", Name: "立ち弱P（ライトタッチ）", Command: "弱", Startup: "4", Recovery: "7", BlockAdvantage: "-1", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ弱P（リトルスター）", Command: "弱", Startup: "4", Recovery: "9", BlockAdvantage: "-1", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "立ち中P（スタートーチ）", Command: "中", Startup: "6", Recovery: "13", BlockAdvantage: "0", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ中P（アンダートーチ）", Command: "中", Startup: "7", Recovery: "15", BlockAdvantage: "-1", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ強P（ステラーリング）", Command: "強", Startup: "12", Recovery: "20", BlockAdvantage: "-3", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ強K（オービットキック）", Command: "強", Startup: "10", Recovery: "25", BlockAdvantage: "-12"},
+		{Source: "frame", Category: "必殺技", Name: "サンフレア(Lv3)", Command: "強", Startup: "18", Recovery: "14", BlockAdvantage: "5", Cancel: "SA3"},
+		{Source: "frame", Category: "必殺技", Name: "OD サンライズ", Startup: "14", Recovery: "21", BlockAdvantage: "-3", Cancel: "SA2"},
+		{Source: "frame", Category: "スーパーアーツ", Name: "SA1 サンシャイン(Lv1)", Startup: "11", Recovery: "79", BlockAdvantage: "-99"},
+	}
+
+	selected := selectCharacterKnowledgeMoves(moves, "received_drive_impact", 10)
+	if len(selected) > 10 {
+		t.Fatalf("selected len = %d", len(selected))
+	}
+	seen := map[string]bool{}
+	for _, move := range selected {
+		seen[move.Name] = true
+		if move.Category == "必殺技" || move.Category == "スーパーアーツ" {
+			t.Fatalf("unexpected broad move selected: %#v", move)
+		}
+	}
+	for _, expected := range []string{
+		"ドライブインパクト（トゥインクルキック）",
+		"立ち弱P（ライトタッチ）",
+		"立ち中P（スタートーチ）",
+		"しゃがみ強K（オービットキック）",
+	} {
+		if !seen[expected] {
+			t.Fatalf("missing %q in selected %#v", expected, selected)
+		}
+	}
+}
+
 func TestIsPunkRecordSearchNoise(t *testing.T) {
 	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_candidate:1766731922:74", "adviceaction", "") {
 		t.Fatal("expected advice_candidate id to be recursive")
