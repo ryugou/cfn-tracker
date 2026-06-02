@@ -3,6 +3,7 @@ package sql
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
@@ -151,14 +152,22 @@ func (s *Storage) FindSF6CharacterMoves(ctx context.Context, character, locale s
 		limit = 40
 	}
 	args := []any{character, locale}
-	where := ""
+	termClauses := []string{}
 	for _, term := range terms {
 		if term == "" {
 			continue
 		}
-		where += ` AND (name LIKE ? OR category LIKE ? OR description LIKE ? OR remarks LIKE ? OR cancel LIKE ? OR attribute LIKE ?)`
+		clause := `(name LIKE ? OR category LIKE ? OR description LIKE ? OR remarks LIKE ? OR cancel LIKE ? OR attribute LIKE ?)`
+		if strings.Contains(term, "キャンセル") {
+			clause = `(cancel != '' OR name LIKE ? OR category LIKE ? OR description LIKE ? OR remarks LIKE ? OR cancel LIKE ? OR attribute LIKE ?)`
+		}
+		termClauses = append(termClauses, clause)
 		pattern := "%" + term + "%"
 		args = append(args, pattern, pattern, pattern, pattern, pattern, pattern)
+	}
+	where := ""
+	if len(termClauses) > 0 {
+		where = ` AND (` + strings.Join(termClauses, ` OR `) + `)`
 	}
 	args = append(args, limit)
 
