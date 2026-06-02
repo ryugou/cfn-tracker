@@ -278,6 +278,18 @@ func TestRequestAdviceLLMReportsTruncatedResponse(t *testing.T) {
 	}
 }
 
+func TestIsRecursivePunkRecordEvidence(t *testing.T) {
+	if !isRecursivePunkRecordEvidence("sf6-advice:gen1:advice_candidate:1766731922:74") {
+		t.Fatal("expected advice_candidate id to be recursive")
+	}
+	if !isRecursivePunkRecordEvidence("sf6-advice:gen1:advice_evidence:1766731922:75:vegapunk:message") {
+		t.Fatal("expected advice_evidence id to be recursive")
+	}
+	if isRecursivePunkRecordEvidence("sf6-advice:gen1:metric-just_parry") {
+		t.Fatal("metric id should not be recursive")
+	}
+}
+
 func TestRequestAdviceLLMRejectsUnresolved1PasswordRef(t *testing.T) {
 	_, err := requestAdviceLLM(
 		context.Background(),

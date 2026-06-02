@@ -755,6 +755,7 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	var res struct {
 		Results []struct {
 			Type    string  `json:"type"`
+			ID      string  `json:"id"`
 			Text    string  `json:"text"`
 			Summary string  `json:"summary"`
 			Score   float64 `json:"score"`
@@ -765,16 +766,27 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	}
 	evidence := make([]model.AdviceEvidence, 0, len(res.Results))
 	for _, row := range res.Results {
+		if isRecursivePunkRecordEvidence(row.ID) {
+			continue
+		}
 		text := row.Text
 		if text == "" {
 			text = row.Summary
 		}
-		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: row.Type, Text: text, Score: row.Score})
+		title := row.Type
+		if title == "" || title == "message" {
+			title = firstLine(text)
+		}
+		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: title, Text: text, Score: row.Score})
 	}
 	if len(evidence) == 0 {
 		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: "GraphRAG検索結果なし", Text: query})
 	}
 	return evidence
+}
+
+func isRecursivePunkRecordEvidence(id string) bool {
+	return strings.Contains(id, ":advice_evidence:") || strings.Contains(id, ":advice_candidate:")
 }
 
 func vegapunkSearchTimeout() time.Duration {
