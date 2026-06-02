@@ -321,7 +321,7 @@ func requestAdviceLLM(
 	}
 	reqBody := map[string]any{
 		"model":       modelName,
-		"max_tokens":  1600,
+		"max_tokens":  3200,
 		"temperature": 0.2,
 		"system":      system,
 		"messages": []map[string]string{
@@ -367,6 +367,7 @@ func requestAdviceLLM(
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
+		StopReason string `json:"stop_reason"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, fmt.Errorf("parse llm response: %w", err)
@@ -379,6 +380,9 @@ func requestAdviceLLM(
 	}
 	if strings.TrimSpace(content.String()) == "" {
 		return nil, fmt.Errorf("llm response is empty")
+	}
+	if parsed.StopReason == "max_tokens" {
+		return nil, fmt.Errorf("llm response was truncated at max_tokens")
 	}
 	candidate, err := parseAdviceCandidateJSON(content.String())
 	if err != nil {

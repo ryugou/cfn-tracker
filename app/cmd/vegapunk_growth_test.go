@@ -112,7 +112,7 @@ func TestVegapunkPlayStatsSnapshotUsesNarrativeSummaryOnly(t *testing.T) {
 	}
 }
 
-func TestVegapunkAdviceRunSkipsDBNumericEvidence(t *testing.T) {
+func TestVegapunkAdviceRunSkipsDBOnlyAndEvidenceEcho(t *testing.T) {
 	graph := vegapunkGraph{}
 	playerID := vegapunkPlayerID("u-1")
 	graph.addAdviceRun(playerID, model.AdviceRun{
@@ -124,6 +124,16 @@ func TestVegapunkAdviceRunSkipsDBNumericEvidence(t *testing.T) {
 		CreatedAt:   "2026-06-02 20:05:00",
 		Candidates: []*model.AdviceCandidate{{
 			Id:              20,
+			Mode:            model.AdviceModeDBOnly,
+			Priority:        "高",
+			Theme:           "DB Onlyの投げ択を増やす",
+			Summary:         "投げが自分1.00、比較対象2.25で不足している。",
+			Action:          "DB Only候補はPunkRecordへ同期しない。",
+			SuccessCriteria: "直近30件で1.80以上を目指す。",
+			WatchMetrics:    "投げ、パニカン被弾",
+			Risks:           "前歩きが増えると被弾する可能性。",
+		}, {
+			Id:              21,
 			Mode:            model.AdviceModePunkRecordOpus46,
 			Priority:        "高",
 			Theme:           "投げ択を増やす",
@@ -140,7 +150,13 @@ func TestVegapunkAdviceRunSkipsDBNumericEvidence(t *testing.T) {
 	})
 
 	joinedText := strings.Join(vegapunkGraphText(graph), "\n")
-	for _, forbidden := range []string{"自分 1.00", "比較対象 2.25", "1.80以上"} {
+	for _, forbidden := range []string{
+		"DB Onlyの投げ択を増やす",
+		"DB Only候補はPunkRecordへ同期しない",
+		"自分 1.00",
+		"比較対象 2.25",
+		"過去にも投げ択不足が課題として扱われた",
+	} {
 		if strings.Contains(joinedText, forbidden) {
 			t.Fatalf("advice sync leaked DB numeric fact %q in:\n%s", forbidden, joinedText)
 		}
@@ -153,8 +169,10 @@ func TestVegapunkAdviceRunSkipsDBNumericEvidence(t *testing.T) {
 			t.Fatalf("candidate should not store numeric-prone attr %q: %#v", forbiddenAttr, attrs)
 		}
 	}
-	if !strings.Contains(joinedText, "過去にも投げ択不足が課題として扱われた") {
-		t.Fatalf("non-DB vegapunk evidence should be retained:\n%s", joinedText)
+	for _, node := range graph.Nodes {
+		if strings.Contains(node.ID, "advice_evidence") {
+			t.Fatalf("candidate evidence should not be re-synced to PunkRecord: %#v", node)
+		}
 	}
 }
 

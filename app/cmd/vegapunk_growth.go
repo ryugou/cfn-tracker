@@ -396,6 +396,9 @@ func (g *vegapunkGraph) addAdviceRun(playerID string, run model.AdviceRun) {
 		if candidate == nil {
 			continue
 		}
+		if candidate.Mode == model.AdviceModeDBOnly {
+			continue
+		}
 		candidateKey := strconv.FormatInt(candidate.Id, 10)
 		if candidate.Id == 0 {
 			candidateKey = fmt.Sprintf("%s-%s", runKey, candidate.Mode)
@@ -421,29 +424,7 @@ func (g *vegapunkGraph) addAdviceRun(playerID string, run model.AdviceRun) {
 			"text":          candidateText,
 		})
 		g.addEdge(runID, candidateID, "GENERATED_CANDIDATE", map[string]string{"mode": string(candidate.Mode)})
-		for _, evidence := range candidate.Evidence {
-			if isDBNumericEvidence(evidence) {
-				continue
-			}
-			if evidence.Source == "" && evidence.Text == "" {
-				continue
-			}
-			evidenceID := vegapunkID("advice_evidence", run.UserId, candidateKey, evidence.Source, evidence.Title)
-			g.addNode("AdviceEvidence", evidenceID, map[string]string{
-				"user_id": run.UserId,
-				"source":  evidence.Source,
-				"title":   evidence.Title,
-				"score":   formatFloat(evidence.Score),
-				"text":    strings.TrimSpace(evidence.Title + "\n" + evidence.Text),
-			})
-			g.addEdge(candidateID, evidenceID, "SUPPORTED_BY", map[string]string{"source": evidence.Source})
-		}
 	}
-}
-
-func isDBNumericEvidence(evidence model.AdviceEvidence) bool {
-	source := strings.ToLower(strings.TrimSpace(evidence.Source))
-	return source == "db" || source == "database" || source == "rdb"
 }
 
 func (g *vegapunkGraph) addNode(nodeType, id string, attrs map[string]string) {

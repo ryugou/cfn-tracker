@@ -183,7 +183,7 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 		if !strings.Contains(req.System, "Street Fighter 6") {
 			t.Fatalf("system prompt did not contain role: %q", req.System)
 		}
-		if req.MaxTokens != 1600 {
+		if req.MaxTokens != 3200 {
 			t.Fatalf("max_tokens = %d", req.MaxTokens)
 		}
 		if len(req.Messages) != 1 || req.Messages[0]["role"] != "user" {
@@ -239,6 +239,42 @@ func TestRequestAdviceLLMCallsAnthropicMessagesAPI(t *testing.T) {
 	}
 	if !foundModelEvidence {
 		t.Fatalf("expected llm model evidence, got %#v", candidate.Evidence)
+	}
+}
+
+func TestRequestAdviceLLMReportsTruncatedResponse(t *testing.T) {
+	t.Setenv(anthropicAPIKeyEnvKey, "test-key")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "msg_test",
+			"type": "message",
+			"role": "assistant",
+			"content": [
+				{
+					"type": "text",
+					"text": "{\"priority\":\"高\""
+				}
+			],
+			"model": "claude-sonnet-4-6",
+			"stop_reason": "max_tokens",
+			"usage": {"input_tokens": 10, "output_tokens": 3200}
+		}`))
+	}))
+	defer server.Close()
+	t.Setenv(anthropicBaseURLEnvKey, server.URL)
+
+	_, err := requestAdviceLLM(
+		context.Background(),
+		model.AdviceModeDBOnly,
+		"claude-sonnet-4-6",
+		"test-key",
+		nil,
+		adviceContext{},
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("expected truncated error, got %v", err)
 	}
 }
 
