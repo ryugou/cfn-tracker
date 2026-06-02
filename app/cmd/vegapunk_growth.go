@@ -865,8 +865,6 @@ func vegapunkSchemaEdgeType(edgeType string) string {
 	switch edgeType {
 	case "EXPECTED_TO_IMPROVE", "HAS_SUCCESS_CRITERION", "IMPROVED_BY", "INDICATES", "MAY_BE_CAUSED_BY", "MAY_WORSEN", "MEASURED_BY", "PRACTICED_BY", "SUPPORTS", "WATCHED_BY":
 		return edgeType
-	case "SUMMARIZED_BY":
-		return "SUPPORTS"
 	default:
 		return "RELATES_TO"
 	}

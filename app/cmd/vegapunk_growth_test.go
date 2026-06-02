@@ -93,6 +93,11 @@ func TestVegapunkPlayStatsSnapshotUsesNarrativeSummaryOnly(t *testing.T) {
 			t.Fatalf("unexpected metric fact node: %#v", node)
 		}
 	}
+	for _, edge := range graph.Edges {
+		if strings.Contains(edge.FromID, "snapshot") && strings.Contains(edge.ToID, "observation_summary") && edge.Type != "RELATES_TO" {
+			t.Fatalf("snapshot summary edge must stay schema-safe RELATES_TO, got %#v", edge)
+		}
+	}
 
 	summary := findVegapunkNode(t, graph, "observation_summary")
 	attrs := vegapunkAttrMap(summary)
