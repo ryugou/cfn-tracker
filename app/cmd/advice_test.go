@@ -281,8 +281,9 @@ func TestRequestAdviceLLMReportsTruncatedResponse(t *testing.T) {
 func TestAdviceSystemPromptGroundsCharacterSpecificClaims(t *testing.T) {
 	prompt := adviceSystemPrompt(model.AdviceModePunkRecordOpus46)
 	for _, expected := range []string{
-		"明示されていないキャラ固有の技名",
-		"一般化した行動カテゴリ",
+		"characterKnowledgeまたはPunkRecord evidenceに明示されているものだけ",
+		"公式技名・コマンド・フレーム",
+		"未登録のキャラ固有情報は推測しない",
 		"ジャストパリィとDI返しは別の行動",
 		"因果証明を示す表現は禁止",
 	} {

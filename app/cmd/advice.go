@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
+	"github.com/williamsjokvist/cfn-tracker/pkg/tracker/sf6/official"
 )
 
 const (
@@ -40,12 +41,13 @@ var adviceHTTPClient = http.DefaultClient
 var adviceLLMConfigMu sync.Mutex
 
 type adviceContext struct {
-	UserID         string                  `json:"userId"`
-	Character      string                  `json:"character"`
-	InputWindow    int                     `json:"inputWindow"`
-	SnapshotAt     string                  `json:"snapshotAt"`
-	Signals        []adviceSignalForPrompt `json:"signals"`
-	BenchmarkCount int                     `json:"benchmarkCount"`
+	UserID             string                         `json:"userId"`
+	Character          string                         `json:"character"`
+	InputWindow        int                            `json:"inputWindow"`
+	SnapshotAt         string                         `json:"snapshotAt"`
+	Signals            []adviceSignalForPrompt        `json:"signals"`
+	BenchmarkCount     int                            `json:"benchmarkCount"`
+	CharacterKnowledge []adviceCharacterMoveForPrompt `json:"characterKnowledge,omitempty"`
 }
 
 type adviceSignalForPrompt struct {
@@ -57,6 +59,23 @@ type adviceSignalForPrompt struct {
 	Trend       float64 `json:"trend"`
 	HigherGood  bool    `json:"higherGood"`
 	Severity    float64 `json:"severity"`
+}
+
+type adviceCharacterMoveForPrompt struct {
+	Source         string `json:"source"`
+	Category       string `json:"category"`
+	Name           string `json:"name"`
+	Command        string `json:"command,omitempty"`
+	Startup        string `json:"startup,omitempty"`
+	Active         string `json:"active,omitempty"`
+	Recovery       string `json:"recovery,omitempty"`
+	HitAdvantage   string `json:"hitAdvantage,omitempty"`
+	BlockAdvantage string `json:"blockAdvantage,omitempty"`
+	Cancel         string `json:"cancel,omitempty"`
+	Damage         string `json:"damage,omitempty"`
+	Attribute      string `json:"attribute,omitempty"`
+	Remarks        string `json:"remarks,omitempty"`
+	Description    string `json:"description,omitempty"`
 }
 
 type adviceSignal struct {
@@ -92,6 +111,7 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 
 	signals := adviceSignals(latest, history, averages)
 	adviceCtx := buildAdviceContext(userId, character, latest, signals, len(players))
+	adviceCtx.CharacterKnowledge = ch.characterKnowledgeForAdvice(ctx, character, signals)
 	sonnetModel := adviceLLMModel(anthropicSonnetModelEnvKey, defaultAnthropicSonnetModel)
 	opusModel := adviceLLMModel(anthropicOpusModelEnvKey, defaultAnthropicOpusModel)
 	apiKeyErr := InitializeAdviceLLMConfig(ctx)
@@ -214,6 +234,57 @@ func buildAdviceContext(
 		})
 	}
 	return out
+}
+
+func (ch *CommandHandler) characterKnowledgeForAdvice(ctx context.Context, character string, signals []adviceSignal) []adviceCharacterMoveForPrompt {
+	slug := official.NormalizeCharacterSlug(character)
+	if slug == "" {
+		return nil
+	}
+	terms := adviceCharacterKnowledgeTerms(signals)
+	moves, err := ch.sqlDb.FindSF6CharacterMoves(ctx, slug, "ja-jp", terms, 32)
+	if err != nil || len(moves) == 0 {
+		return nil
+	}
+	out := make([]adviceCharacterMoveForPrompt, 0, len(moves))
+	for _, move := range moves {
+		out = append(out, adviceCharacterMoveForPrompt{
+			Source:         move.Source,
+			Category:       move.Category,
+			Name:           move.Name,
+			Command:        move.Command,
+			Startup:        move.Startup,
+			Active:         move.Active,
+			Recovery:       move.Recovery,
+			HitAdvantage:   move.HitAdvantage,
+			BlockAdvantage: move.BlockAdvantage,
+			Cancel:         move.Cancel,
+			Damage:         move.Damage,
+			Attribute:      move.Attribute,
+			Remarks:        move.Remarks,
+			Description:    move.Description,
+		})
+	}
+	return out
+}
+
+func adviceCharacterKnowledgeTerms(signals []adviceSignal) []string {
+	terms := []string{"ドライブインパクト", "ドライブリバーサル", "ドライブパリィ", "キャンセル", "弱", "通常技", "特殊技", "必殺技", "投げ"}
+	for _, signal := range signals {
+		switch signal.key {
+		case "received_drive_impact":
+			terms = append(terms, "DI", "ドライブインパクト", "キャンセル", "SA")
+		case "just_parry":
+			terms = append(terms, "ジャストパリィ", "ドライブパリィ")
+		case "throw_tech", "throw_count":
+			terms = append(terms, "投げ", "通常投げ")
+		case "cornered_time":
+			terms = append(terms, "ドライブリバーサル", "ジャンプ", "キャンセル")
+		case "received_punish_counter":
+			terms = append(terms, "硬直", "ガード", "キャンセル")
+		}
+	}
+	return dedupeStrings(terms)
 }
 
 func makeSignal(key, label string, self, benchmark, trend float64, higherGood bool, description string) adviceSignal {
@@ -447,8 +518,9 @@ func adviceSystemPrompt(mode model.AdviceMode) string {
 		"目的は、プレイヤーの現在値、直近推移、ベンチマーク差分から、次に実行する施策カードを1つ作ることです。",
 		"観測事実と推定を分け、因果を断定しすぎないでください。",
 		"「因果的に連動」「証拠となる」「証明する」など、因果証明を示す表現は禁止です。「関連している可能性」「改善を示唆する」に留めてください。",
-		"DB観測値やPunkRecord evidenceに明示されていないキャラ固有の技名、コマンド、フレーム、コンボ、連携名は出さないでください。",
-		"キャラ固有情報が不足する場合は、キャンセル可能技、小技、ガード継続、DI返し、ジャンプ脱出などの一般化した行動カテゴリで書いてください。",
+		"キャラ固有の技名、コマンド、フレーム、コンボ、連携名は、characterKnowledgeまたはPunkRecord evidenceに明示されているものだけ使ってください。",
+		"characterKnowledgeにある公式技名・コマンド・フレームは、必要なら根拠として使ってください。未登録のキャラ固有情報は推測しないでください。",
+		"キャラ固有情報が足りない場合だけ、キャンセル可能技、小技、ガード継続、DI返し、ジャンプ脱出などの一般化した行動カテゴリで書いてください。",
 		"ジャストパリィとDI返しは別の行動です。ジャストパリィ値が低いことをDI返し不能やDI返し成功率ゼロの根拠にしないでください。",
 		"短期間で言うことを変えすぎず、成功条件と副作用として監視する指標を必ず含めてください。",
 		modeInstruction,
@@ -601,7 +673,7 @@ func formatAdviceJSONValue(value any, depth int) string {
 }
 
 func dbEvidenceFromContext(adviceCtx adviceContext) []model.AdviceEvidence {
-	evidence := make([]model.AdviceEvidence, 0, len(adviceCtx.Signals))
+	evidence := make([]model.AdviceEvidence, 0, len(adviceCtx.Signals)+len(adviceCtx.CharacterKnowledge))
 	for _, signal := range adviceCtx.Signals {
 		evidence = append(evidence, model.AdviceEvidence{
 			Source: "db",
@@ -612,7 +684,71 @@ func dbEvidenceFromContext(adviceCtx adviceContext) []model.AdviceEvidence {
 			),
 		})
 	}
+	for _, move := range adviceCtx.CharacterKnowledge {
+		text := formatCharacterMoveEvidence(move)
+		if text == "" {
+			continue
+		}
+		evidence = append(evidence, model.AdviceEvidence{
+			Source: "character_db",
+			Title:  move.Name,
+			Text:   text,
+		})
+	}
 	return evidence
+}
+
+func formatCharacterMoveEvidence(move adviceCharacterMoveForPrompt) string {
+	parts := []string{move.Category}
+	if move.Command != "" {
+		parts = append(parts, "入力 "+move.Command)
+	}
+	frameParts := []string{}
+	if move.Startup != "" {
+		frameParts = append(frameParts, "発生 "+move.Startup)
+	}
+	if move.Active != "" {
+		frameParts = append(frameParts, "持続 "+move.Active)
+	}
+	if move.Recovery != "" {
+		frameParts = append(frameParts, "硬直 "+move.Recovery)
+	}
+	if move.HitAdvantage != "" {
+		frameParts = append(frameParts, "ヒット "+move.HitAdvantage)
+	}
+	if move.BlockAdvantage != "" {
+		frameParts = append(frameParts, "ガード "+move.BlockAdvantage)
+	}
+	if len(frameParts) > 0 {
+		parts = append(parts, strings.Join(frameParts, " / "))
+	}
+	if move.Cancel != "" {
+		parts = append(parts, "キャンセル "+move.Cancel)
+	}
+	if move.Attribute != "" {
+		parts = append(parts, "属性 "+move.Attribute)
+	}
+	if move.Remarks != "" {
+		parts = append(parts, move.Remarks)
+	}
+	if move.Description != "" {
+		parts = append(parts, move.Description)
+	}
+	return strings.Join(dedupeStrings(parts), " / ")
+}
+
+func dedupeStrings(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func baseAdvice(top adviceSignal) *model.AdviceCandidate {

@@ -151,8 +151,8 @@ export namespace model {
 	    players: BenchmarkPlayer[];
 	    rankAverages: BenchmarkRankAverage[];
 	}
-	
-	
+
+
 	export interface FGCTrackerError {
 	    localizationKey: ErrorLocalizationKey;
 	    message: string;
@@ -352,7 +352,36 @@ export namespace model {
 	    match: Match;
 	    stats?: PlayStatsSnapshot;
 	}
-	
+
+	export interface SF6CharacterMove {
+	    id: number;
+	    character: string;
+	    locale: string;
+	    source: string;
+	    category: string;
+	    name: string;
+	    command: string;
+	    description: string;
+	    startup: string;
+	    active: string;
+	    recovery: string;
+	    hitAdvantage: string;
+	    blockAdvantage: string;
+	    cancel: string;
+	    damage: string;
+	    comboScaling: string;
+	    driveGaugeGainHit: string;
+	    driveGaugeLossBlock: string;
+	    driveGaugeLossPunish: string;
+	    saGaugeGain: string;
+	    attribute: string;
+	    remarks: string;
+	    rawText: string;
+	    sourceUrl: string;
+	    fetchedAt: string;
+	    createdAt: string;
+	    updatedAt: string;
+	}
 	export interface Session {
 	    id: number;
 	    userId: string;
@@ -392,7 +421,7 @@ export namespace model {
 }
 
 export namespace sql {
-	
+
 	export interface NullString {
 	    String: string;
 	    Valid: boolean;

@@ -20,9 +20,11 @@ Keep it updated when DB schema, data collection, or advice/PunkRecord behavior c
   - `app/pkg/model/play_stats.go`
   - `app/pkg/model/benchmark.go`
   - `app/pkg/model/advice.go`
+  - `app/pkg/model/sf6_character_data.go`
   - `app/pkg/storage/sql/play_stats.go`
   - `app/pkg/storage/sql/benchmark.go`
   - `app/pkg/storage/sql/advice.go`
+  - `app/pkg/storage/sql/sf6_character_data.go`
 
 ## DB Tables
 
@@ -267,6 +269,60 @@ Behavior:
 - Failure keeps the row, increments `attempts`, records `last_error`, and sets `next_attempt_at` using exponential backoff.
 - The app should not treat a saved local DB row as synced to PunkRecord unless the corresponding queue row has `processed_at` set.
 
+### sf6_character_moves
+
+Official SF6 character movelist and frame-data cache. Data is fetched from the public Street Fighter 6 character pages, not from the authenticated CFN/Buckler data path.
+
+URL pattern:
+
+- Movelist: `https://www.streetfighter.com/6/{locale}/character/{character}/movelist`
+- Frame data: `https://www.streetfighter.com/6/{locale}/character/{character}/frame`
+- Example: `https://www.streetfighter.com/6/ja-jp/character/ingrid/frame`
+
+Columns:
+
+- `id` INTEGER PRIMARY KEY AUTOINCREMENT
+- `character` TEXT NOT NULL
+- `locale` TEXT NOT NULL
+- `source` TEXT NOT NULL: `movelist` or `frame`
+- `category` TEXT NOT NULL DEFAULT ''
+- `name` TEXT NOT NULL
+- `command` TEXT NOT NULL DEFAULT ''
+- `description` TEXT NOT NULL DEFAULT ''
+- `startup` TEXT NOT NULL DEFAULT ''
+- `active` TEXT NOT NULL DEFAULT ''
+- `recovery` TEXT NOT NULL DEFAULT ''
+- `hit_advantage` TEXT NOT NULL DEFAULT ''
+- `block_advantage` TEXT NOT NULL DEFAULT ''
+- `cancel` TEXT NOT NULL DEFAULT ''
+- `damage` TEXT NOT NULL DEFAULT ''
+- `combo_scaling` TEXT NOT NULL DEFAULT ''
+- `drive_gauge_gain_hit` TEXT NOT NULL DEFAULT ''
+- `drive_gauge_loss_block` TEXT NOT NULL DEFAULT ''
+- `drive_gauge_loss_punish` TEXT NOT NULL DEFAULT ''
+- `sa_gauge_gain` TEXT NOT NULL DEFAULT ''
+- `attribute` TEXT NOT NULL DEFAULT ''
+- `remarks` TEXT NOT NULL DEFAULT ''
+- `raw_text` TEXT NOT NULL DEFAULT ''
+- `source_url` TEXT NOT NULL DEFAULT ''
+- `fetched_at` TEXT NOT NULL DEFAULT ''
+- `created_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+- `updated_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+
+Constraints/indexes:
+
+- Unique: `(character, locale, source, category, name, command, startup, active)`
+- Index: `idx_sf6_character_moves_character_locale(character, locale)`
+- Index: `idx_sf6_character_moves_lookup(character, locale, source, category, name)`
+
+Collection spec:
+
+- Parser lives in `app/pkg/tracker/sf6/official`.
+- Manual sync tool: `go run ./tools/sync-sf6-character-data -character ingrid -locale ja-jp`.
+- App command: `SyncSF6CharacterData(character, locale)`.
+- The advice prompt receives a relevant subset as `characterKnowledge`.
+- Character-specific move names, commands, frame values, combos, or sequence names may be used only when grounded by `characterKnowledge` or PunkRecord evidence. Missing character-specific details must not be guessed.
+
 ## Advice Generation
 
 Command entry point:
@@ -278,11 +334,13 @@ Inputs:
 - Latest `play_stats_snapshots` row.
 - Recent play-stat snapshots, currently treated as a 30-snapshot window.
 - Benchmark averages from `benchmark_players`.
+- Relevant official character movelist/frame rows from `sf6_character_moves`, passed as `characterKnowledge`.
 - PunkRecord/vegapunk evidence for PunkRecord modes.
 
 Source-of-truth boundary:
 
 - Exact metric values, deltas, benchmark averages, match counts, LP/MR values, and win/loss records must come from SQLite/RDB queries.
+- Exact character move names, commands, frame values, cancel properties, attributes, and official notes must come from `sf6_character_moves` or PunkRecord evidence.
 - PunkRecord/vegapunk is a narrative memory layer. It stores SF6 knowledge, advice actions, qualitative observation summaries, side-effect hypotheses, feedback, and similar past cases.
 - Do not use vegapunk as a numeric fact store or an effect-measurement engine.
 - GraphRAG evidence can support plausible explanations and analogies, but it must not be presented as causal proof.
