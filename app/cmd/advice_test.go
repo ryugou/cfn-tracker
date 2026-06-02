@@ -278,6 +278,20 @@ func TestRequestAdviceLLMReportsTruncatedResponse(t *testing.T) {
 	}
 }
 
+func TestAdviceSystemPromptGroundsCharacterSpecificClaims(t *testing.T) {
+	prompt := adviceSystemPrompt(model.AdviceModePunkRecordOpus46)
+	for _, expected := range []string{
+		"明示されていないキャラ固有の技名",
+		"一般化した行動カテゴリ",
+		"ジャストパリィとDI返しは別の行動",
+		"因果証明を示す表現は禁止",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("system prompt missing %q:\n%s", expected, prompt)
+		}
+	}
+}
+
 func TestIsPunkRecordSearchNoise(t *testing.T) {
 	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_candidate:1766731922:74", "adviceaction", "") {
 		t.Fatal("expected advice_candidate id to be recursive")
