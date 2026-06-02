@@ -321,7 +321,7 @@ func requestAdviceLLM(
 	}
 	reqBody := map[string]any{
 		"model":       modelName,
-		"max_tokens":  1600,
+		"max_tokens":  3200,
 		"temperature": 0.2,
 		"system":      system,
 		"messages": []map[string]string{
@@ -367,6 +367,7 @@ func requestAdviceLLM(
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
+		StopReason string `json:"stop_reason"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, fmt.Errorf("parse llm response: %w", err)
@@ -379,6 +380,9 @@ func requestAdviceLLM(
 	}
 	if strings.TrimSpace(content.String()) == "" {
 		return nil, fmt.Errorf("llm response is empty")
+	}
+	if parsed.StopReason == "max_tokens" {
+		return nil, fmt.Errorf("llm response was truncated at max_tokens")
 	}
 	candidate, err := parseAdviceCandidateJSON(content.String())
 	if err != nil {
@@ -442,6 +446,7 @@ func adviceSystemPrompt(mode model.AdviceMode) string {
 		"あなたはStreet Fighter 6の分析コーチです。",
 		"目的は、プレイヤーの現在値、直近推移、ベンチマーク差分から、次に実行する施策カードを1つ作ることです。",
 		"観測事実と推定を分け、因果を断定しすぎないでください。",
+		"「因果的に連動」「証拠となる」「証明する」など、因果証明を示す表現は禁止です。「関連している可能性」「改善を示唆する」に留めてください。",
 		"短期間で言うことを変えすぎず、成功条件と副作用として監視する指標を必ず含めてください。",
 		modeInstruction,
 		"返答はJSONのみ。Markdownや説明文は不要です。",
@@ -751,6 +756,7 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	var res struct {
 		Results []struct {
 			Type    string  `json:"type"`
+			ID      string  `json:"id"`
 			Text    string  `json:"text"`
 			Summary string  `json:"summary"`
 			Score   float64 `json:"score"`
@@ -765,12 +771,35 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		if text == "" {
 			text = row.Summary
 		}
-		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: row.Type, Text: text, Score: row.Score})
+		if isPunkRecordSearchNoise(row.ID, row.Type, text) {
+			continue
+		}
+		title := row.Type
+		if title == "" || title == "message" {
+			title = firstLine(text)
+		}
+		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: title, Text: text, Score: row.Score})
 	}
 	if len(evidence) == 0 {
 		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: "GraphRAG検索結果なし", Text: query})
 	}
 	return evidence
+}
+
+func isPunkRecordSearchNoise(id, nodeType, text string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	nodeType = strings.ToLower(strings.TrimSpace(nodeType))
+	text = strings.TrimSpace(text)
+	if strings.Contains(id, ":advice_evidence:") ||
+		strings.Contains(id, ":advice_candidate:") ||
+		strings.Contains(id, ":advice_run:") ||
+		strings.Contains(id, ":player:") {
+		return true
+	}
+	if nodeType == "evidence" {
+		return strings.HasPrefix(text, "Advice run ") || strings.HasPrefix(text, "CFN player ")
+	}
+	return false
 }
 
 func vegapunkSearchTimeout() time.Duration {
