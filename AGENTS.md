@@ -280,6 +280,13 @@ Inputs:
 - Benchmark averages from `benchmark_players`.
 - PunkRecord/vegapunk evidence for PunkRecord modes.
 
+Source-of-truth boundary:
+
+- Exact metric values, deltas, benchmark averages, match counts, LP/MR values, and win/loss records must come from SQLite/RDB queries.
+- PunkRecord/vegapunk is a narrative memory layer. It stores SF6 knowledge, advice actions, qualitative observation summaries, side-effect hypotheses, feedback, and similar past cases.
+- Do not use vegapunk as a numeric fact store or an effect-measurement engine.
+- GraphRAG evidence can support plausible explanations and analogies, but it must not be presented as causal proof.
+
 Current generated modes, displayed as tabs:
 
 - `punk_record_opus_4_6`: Punk Record with Claude Opus 4.6.
@@ -317,6 +324,18 @@ Data-cleanup note:
 ## PunkRecord / Vegapunk
 
 Vegapunk is the GraphRAG backend used for Punk Record advice.
+
+Role:
+
+- RDB/API: numeric source of truth and all exact aggregation.
+- Vegapunk/PunkRecord: narrative knowledge, prior advice, qualitative observation summaries, side-effect hypotheses, and similar-case retrieval.
+- LLM: combines the current RDB facts with retrieved PunkRecord context.
+
+Sync payload rule:
+
+- Do not enqueue raw metric values, metric deltas, LP/MR, wins/losses, or win-rate facts as vegapunk node attributes/text.
+- Sync only RDB references, timestamps, character context, qualitative observation summaries, advice candidates, evidence text, and feedback/side-effect narrative.
+- If exact numbers are needed for advice, query SQLite again instead of reading them from vegapunk.
 
 Local/runtime facts:
 

@@ -69,6 +69,15 @@ type growthMetric struct {
 	Value      float64
 }
 
+type growthObservation struct {
+	Key         string
+	Label       string
+	Direction   string
+	Assessment  string
+	HigherGood  bool
+	HasPrevious bool
+}
+
 func (ch *CommandHandler) SyncVegapunkGrowthData(userId, character string) error {
 	return ch.syncVegapunkGrowthData(context.Background(), userId, character)
 }
@@ -305,9 +314,8 @@ func (g *vegapunkGraph) addMatch(playerID string, match model.Match) {
 		result = "win"
 	}
 	text := fmt.Sprintf(
-		"%s played %s ranked match on %s %s JST: %s vs %s %s, LP %d, wins %d, losses %d, replay %s.",
+		"%s played %s ranked match on %s %s JST: %s vs %s %s. Numeric match facts remain in the local RDB; this node is a context pointer for narrative retrieval.",
 		match.UserName, match.Character, match.Date, match.Time, result, match.Opponent, match.OpponentCharacter,
-		match.LP, match.Wins, match.Losses, match.ReplayID,
 	)
 	g.addNode("Match", matchID, map[string]string{
 		"user_id":            match.UserId,
@@ -319,14 +327,8 @@ func (g *vegapunkGraph) addMatch(playerID string, match model.Match) {
 		"opponent_character": match.OpponentCharacter,
 		"opponent_league":    match.OpponentLeague,
 		"result":             result,
-		"lp":                 strconv.Itoa(match.LP),
-		"lp_gain":            strconv.Itoa(match.LPGain),
-		"mr":                 strconv.Itoa(match.MR),
-		"mr_gain":            strconv.Itoa(match.MRGain),
-		"wins":               strconv.Itoa(match.Wins),
-		"losses":             strconv.Itoa(match.Losses),
-		"win_rate":           strconv.Itoa(match.WinRate),
 		"played_at":          strings.TrimSpace(match.Date + " " + match.Time),
+		"rdb_ref":            firstNonEmpty(match.ReplayID, fmt.Sprintf("session:%d", match.SessionId)),
 		"text":               text,
 	})
 	g.addEdge(playerID, matchID, "PLAYED", nil)
@@ -343,76 +345,34 @@ func (g *vegapunkGraph) addPlayStatsSnapshot(playerID string, snap model.PlaySta
 		replayID = snap.MatchReplayId.String
 	}
 	text := fmt.Sprintf(
-		"Play stats snapshot for user %s character %s at %s JST: ranked matches %d, throw_count %.2f, cornered_time %.2f, received_drive_impact %.2f, just_parry %.2f, throw_tech %.2f, received_punish_counter %.2f.",
-		snap.UserId, snap.Character, snap.SnapshotAt, snap.RankMatchPlayCount, snap.ThrowCount, snap.CorneredTime,
-		snap.ReceivedDriveImpact, snap.JustParry, snap.ThrowTech, snap.ReceivedPunishCounter,
+		"Play stats snapshot for user %s character %s at %s JST. Numeric stat values remain in the local RDB and should be read from the RDB/API when exact values are needed.",
+		snap.UserId, snap.Character, snap.SnapshotAt,
 	)
 	g.addNode("PlayStatsSnapshot", snapshotID, map[string]string{
-		"user_id":               snap.UserId,
-		"character":             snap.Character,
-		"match_replay_id":       replayID,
-		"snapshot_at":           snap.SnapshotAt,
-		"rank_match_play_count": strconv.Itoa(snap.RankMatchPlayCount),
-		"text":                  text,
+		"user_id":         snap.UserId,
+		"character":       snap.Character,
+		"match_replay_id": replayID,
+		"snapshot_at":     snap.SnapshotAt,
+		"rdb_ref":         strconv.FormatInt(snap.Id, 10),
+		"text":            text,
 	})
 	g.addEdge(playerID, snapshotID, "HAS_SNAPSHOT", nil)
 	if replayID != "" {
 		g.addEdge(vegapunkID("match", snap.UserId, replayID), snapshotID, "HAS_PLAY_STATS", nil)
 	}
-	for _, metric := range growthMetrics(snap) {
-		obsID := vegapunkID("metric_observation", snap.UserId, snapshotKey, metric.Key)
-		obsText := fmt.Sprintf("%s at %s JST: %s = %.2f.", snap.UserId, snap.SnapshotAt, metric.Label, metric.Value)
-		g.addNode("MetricObservation", obsID, map[string]string{
+	observations := growthObservations(snap, previous)
+	if len(observations) > 0 {
+		summaryID := vegapunkID("observation_summary", snap.UserId, snapshotKey)
+		summaryText := playStatsObservationSummaryText(snap, previous, observations)
+		g.addNode("ObservationSummary", summaryID, map[string]string{
 			"user_id":     snap.UserId,
 			"character":   snap.Character,
 			"snapshot_at": snap.SnapshotAt,
-			"metric_key":  metric.Key,
-			"label":       metric.Label,
-			"value":       formatFloat(metric.Value),
-			"higher_good": strconv.FormatBool(metric.HigherGood),
-			"text":        obsText,
+			"rdb_ref":     strconv.FormatInt(snap.Id, 10),
+			"title":       fmt.Sprintf("%s %s play-stat observation summary", snap.Character, snap.SnapshotAt),
+			"text":        summaryText,
 		})
-		g.addEdge(snapshotID, obsID, "OBSERVED_METRIC", map[string]string{"metric_key": metric.Key})
-		if previous == nil {
-			continue
-		}
-		prevValue := avgValue(previous, metric.Key)
-		delta := metric.Value - prevValue
-		deltaID := vegapunkID("metric_delta", snap.UserId, snapshotKey, metric.Key)
-		direction := "unchanged"
-		if delta > 0 {
-			direction = "increased"
-		} else if delta < 0 {
-			direction = "decreased"
-		}
-		improvement := "neutral"
-		if delta != 0 {
-			improved := (metric.HigherGood && delta > 0) || (!metric.HigherGood && delta < 0)
-			if improved {
-				improvement = "improved"
-			} else {
-				improvement = "worsened"
-			}
-		}
-		deltaText := fmt.Sprintf(
-			"%s changed from %.2f to %.2f between %s and %s: delta %.2f, %s.",
-			metric.Label, prevValue, metric.Value, previous.SnapshotAt, snap.SnapshotAt, delta, improvement,
-		)
-		g.addNode("MetricDelta", deltaID, map[string]string{
-			"user_id":           snap.UserId,
-			"character":         snap.Character,
-			"metric_key":        metric.Key,
-			"label":             metric.Label,
-			"previous_value":    formatFloat(prevValue),
-			"current_value":     formatFloat(metric.Value),
-			"delta":             formatFloat(delta),
-			"direction":         direction,
-			"improvement":       improvement,
-			"previous_snapshot": previous.SnapshotAt,
-			"current_snapshot":  snap.SnapshotAt,
-			"text":              deltaText,
-		})
-		g.addEdge(obsID, deltaID, "HAS_DELTA", map[string]string{"metric_key": metric.Key})
+		g.addEdge(snapshotID, summaryID, "SUMMARIZED_BY", nil)
 	}
 }
 
@@ -422,14 +382,14 @@ func (g *vegapunkGraph) addAdviceRun(playerID string, run model.AdviceRun) {
 		runKey = run.CreatedAt
 	}
 	runID := vegapunkID("advice_run", run.UserId, runKey)
-	text := fmt.Sprintf("Advice run %s for user %s character %s, input window %d, snapshot %s.", runKey, run.UserId, run.Character, run.InputWindow, run.SnapshotAt)
+	text := fmt.Sprintf("Advice run %s for user %s character %s, created at %s. Numeric input windows and snapshot facts remain in the local RDB.", runKey, run.UserId, run.Character, run.CreatedAt)
 	g.addNode("AdviceRun", runID, map[string]string{
-		"user_id":      run.UserId,
-		"character":    run.Character,
-		"input_window": strconv.Itoa(run.InputWindow),
-		"snapshot_at":  run.SnapshotAt,
-		"created_at":   run.CreatedAt,
-		"text":         text,
+		"user_id":     run.UserId,
+		"character":   run.Character,
+		"snapshot_at": run.SnapshotAt,
+		"created_at":  run.CreatedAt,
+		"rdb_ref":     runKey,
+		"text":        text,
 	})
 	g.addEdge(playerID, runID, "REQUESTED_ADVICE", nil)
 	for _, candidate := range run.Candidates {
@@ -443,28 +403,28 @@ func (g *vegapunkGraph) addAdviceRun(playerID string, run model.AdviceRun) {
 		candidateID := vegapunkID("advice_candidate", run.UserId, candidateKey)
 		candidateText := strings.Join(nonEmptyStrings(
 			fmt.Sprintf("%s advice: %s", candidate.Mode, candidate.Theme),
-			candidate.Summary,
 			candidate.Action,
-			candidate.SuccessCriteria,
 			candidate.WatchMetrics,
 			candidate.Risks,
+			"Exact DB metric values and benchmark deltas are intentionally omitted from PunkRecord; query the local RDB for numeric evidence.",
 		), "\n")
 		g.addNode("AdviceCandidate", candidateID, map[string]string{
-			"user_id":          run.UserId,
-			"character":        run.Character,
-			"mode":             string(candidate.Mode),
-			"priority":         candidate.Priority,
-			"theme":            candidate.Theme,
-			"summary":          candidate.Summary,
-			"action":           candidate.Action,
-			"success_criteria": candidate.SuccessCriteria,
-			"watch_metrics":    candidate.WatchMetrics,
-			"risks":            candidate.Risks,
-			"created_at":       candidate.CreatedAt,
-			"text":             candidateText,
+			"user_id":       run.UserId,
+			"character":     run.Character,
+			"mode":          string(candidate.Mode),
+			"priority":      candidate.Priority,
+			"theme":         candidate.Theme,
+			"action":        candidate.Action,
+			"watch_metrics": candidate.WatchMetrics,
+			"risks":         candidate.Risks,
+			"created_at":    candidate.CreatedAt,
+			"text":          candidateText,
 		})
 		g.addEdge(runID, candidateID, "GENERATED_CANDIDATE", map[string]string{"mode": string(candidate.Mode)})
 		for _, evidence := range candidate.Evidence {
+			if isDBNumericEvidence(evidence) {
+				continue
+			}
 			if evidence.Source == "" && evidence.Text == "" {
 				continue
 			}
@@ -479,6 +439,11 @@ func (g *vegapunkGraph) addAdviceRun(playerID string, run model.AdviceRun) {
 			g.addEdge(candidateID, evidenceID, "SUPPORTED_BY", map[string]string{"source": evidence.Source})
 		}
 	}
+}
+
+func isDBNumericEvidence(evidence model.AdviceEvidence) bool {
+	source := strings.ToLower(strings.TrimSpace(evidence.Source))
+	return source == "db" || source == "database" || source == "rdb"
 }
 
 func (g *vegapunkGraph) addNode(nodeType, id string, attrs map[string]string) {
@@ -740,12 +705,78 @@ func growthMetrics(snap model.PlayStatsSnapshot) []growthMetric {
 	}
 }
 
+func growthObservations(snap model.PlayStatsSnapshot, previous *model.PlayStatsSnapshot) []growthObservation {
+	if previous == nil {
+		return []growthObservation{{
+			Key:         "baseline",
+			Label:       "初回観測",
+			Direction:   "baseline",
+			Assessment:  "baseline",
+			HasPrevious: false,
+		}}
+	}
+	metrics := growthMetrics(snap)
+	out := make([]growthObservation, 0, len(metrics))
+	for _, metric := range metrics {
+		prevValue := avgValue(previous, metric.Key)
+		delta := metric.Value - prevValue
+		direction := "unchanged"
+		if delta > 0 {
+			direction = "increased"
+		} else if delta < 0 {
+			direction = "decreased"
+		}
+		assessment := "neutral"
+		if delta != 0 {
+			improved := (metric.HigherGood && delta > 0) || (!metric.HigherGood && delta < 0)
+			if improved {
+				assessment = "improved"
+			} else {
+				assessment = "worsened"
+			}
+		}
+		out = append(out, growthObservation{
+			Key:         metric.Key,
+			Label:       metric.Label,
+			Direction:   direction,
+			Assessment:  assessment,
+			HigherGood:  metric.HigherGood,
+			HasPrevious: true,
+		})
+	}
+	return out
+}
+
+func playStatsObservationSummaryText(
+	snap model.PlayStatsSnapshot,
+	previous *model.PlayStatsSnapshot,
+	observations []growthObservation,
+) string {
+	lines := []string{
+		fmt.Sprintf("Observation summary for user %s character %s at %s JST.", snap.UserId, snap.Character, snap.SnapshotAt),
+		"Exact metric values, counts, and deltas are intentionally not stored in PunkRecord; the local RDB is the source of truth for numeric analysis.",
+	}
+	if previous == nil {
+		lines = append(lines, "This snapshot establishes a baseline observation. Use the RDB/API for exact current values.")
+		return strings.Join(lines, "\n")
+	}
+	lines = append(lines, fmt.Sprintf("Compared with the previous RDB snapshot at %s, qualitative movement was observed:", previous.SnapshotAt))
+	for _, obs := range observations {
+		if !obs.HasPrevious {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("- %s: %s, assessed as %s for this metric.", obs.Label, obs.Direction, obs.Assessment))
+	}
+	lines = append(lines, "Treat these as retrieval hints only, not as causal proof or numeric fact storage.")
+	return strings.Join(lines, "\n")
+}
+
 func vegapunkSchemaNodeType(nodeType string) string {
 	switch nodeType {
 	case "Metric", "Evidence", "Symptom", "CauseHypothesis", "AdviceAction", "Drill", "SuccessCriterion", "SideEffect", "AdviceOutcome":
 		return nodeType
-	case "MetricObservation":
-		return "Metric"
+	case "MetricObservation", "MetricDelta", "ObservationSummary", "PlayStatsSnapshot", "Match":
+		return "Evidence"
 	case "AdviceCandidate":
 		return "AdviceAction"
 	default:
@@ -834,6 +865,8 @@ func vegapunkSchemaEdgeType(edgeType string) string {
 	switch edgeType {
 	case "EXPECTED_TO_IMPROVE", "HAS_SUCCESS_CRITERION", "IMPROVED_BY", "INDICATES", "MAY_BE_CAUSED_BY", "MAY_WORSEN", "MEASURED_BY", "PRACTICED_BY", "SUPPORTS", "WATCHED_BY":
 		return edgeType
+	case "SUMMARIZED_BY":
+		return "SUPPORTS"
 	default:
 		return "RELATES_TO"
 	}

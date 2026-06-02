@@ -5,7 +5,7 @@
 Compare two advice generation modes from the same player data:
 
 - DB-only: uses local metrics, benchmark averages, trend deltas, advice history, and feedback.
-- GraphRAG: uses the same DB input plus vegapunk evidence such as SF6 knowledge, related symptoms, side-effect patterns, and similar past advice cases.
+- GraphRAG: uses the same DB input plus vegapunk evidence such as SF6 knowledge, related symptoms, side-effect patterns, qualitative observation summaries, and similar past advice cases.
 
 The comparison is meant to evaluate whether GraphRAG adds value beyond a reasonably strong DB + LLM baseline.
 
@@ -20,6 +20,15 @@ The local SQLite database remains the source of truth for measured facts:
 - user feedback
 
 Vegapunk is used as an interpretation and evidence layer, not as a replacement for local data.
+It must not be treated as the source of truth for exact metric values, deltas, win rates, benchmark averages, or other measured facts.
+
+The intended split is:
+
+- RDB/API: exact numbers, aggregation, trend calculation, benchmark comparison, and history windows.
+- Vegapunk/PunkRecord: SF6 knowledge, advice actions, qualitative observation summaries, side-effect hypotheses, user feedback, and similar past cases.
+- LLM: combines the current RDB facts with the retrieved PunkRecord context and produces advice.
+
+GraphRAG evidence is allowed to suggest plausible explanations and analogies, but it should not claim causal proof.
 
 ## Current MVP
 
@@ -47,12 +56,12 @@ The LLM prompt receives:
 - the DB facts and trend summary
 - active / past advice outcomes
 - user feedback
-- GraphRAG search results and traceable chains
+- GraphRAG search results and traceable narrative chains
 
 DB-only and GraphRAG should keep the same common prompt, output schema, and evaluation criteria. The only intended difference is the context block:
 
 - DB-only: DB facts and trends.
-- GraphRAG: the same DB facts and trends plus GraphRAG evidence.
+- GraphRAG: the same DB facts and trends plus PunkRecord evidence. PunkRecord evidence may reference prior qualitative observations, advice, and side effects, but exact numeric facts must still come from the DB.
 
 The output should remain structured as an advice candidate:
 
@@ -75,4 +84,4 @@ Compare DB-only and GraphRAG with these scores:
 - actionability
 - result after the target match window
 
-The key hypothesis is not that GraphRAG wins on the first advice. The expected advantage is that it improves after advice history, side effects, and feedback accumulate.
+The key hypothesis is not that GraphRAG wins on the first advice. The expected advantage is that it improves after advice history, side effects, qualitative observation summaries, and feedback accumulate.
