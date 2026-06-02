@@ -18,6 +18,39 @@ const baseURL = "https://www.streetfighter.com/6"
 
 var iconFileName = regexp.MustCompile(`/([^/]+)\.png$`)
 
+var AllCharacterSlugs = []string{
+	"luke",
+	"jamie",
+	"manon",
+	"kimberly",
+	"marisa",
+	"lily",
+	"jp",
+	"juri",
+	"deejay",
+	"cammy",
+	"ryu",
+	"ken",
+	"ehonda",
+	"blanka",
+	"guile",
+	"chunli",
+	"zangief",
+	"dhalsim",
+	"rashid",
+	"aki",
+	"ed",
+	"gouki_akuma",
+	"vega_mbison",
+	"terry",
+	"mai",
+	"elena",
+	"sagat",
+	"ingrid",
+	"cviper",
+	"alex",
+}
+
 type Client struct {
 	HTTPClient *http.Client
 }
@@ -61,16 +94,16 @@ func NormalizeCharacterSlug(character string) string {
 	character = strings.ReplaceAll(character, ".", "")
 	character = strings.ReplaceAll(character, "-", "")
 	switch character {
-	case "m.bison", "mbison", "bison":
-		return "vega"
-	case "e.honda", "ehonda", "edmondhonda":
-		return "honda"
+	case "m.bison", "mbison", "bison", "vega", "vega_mbison":
+		return "vega_mbison"
+	case "e.honda", "ehonda", "edmondhonda", "honda":
+		return "ehonda"
 	case "chun-li", "chunli":
 		return "chunli"
 	case "a.k.i.", "aki":
 		return "aki"
-	case "akuma":
-		return "gouki"
+	case "akuma", "gouki", "gouki_akuma":
+		return "gouki_akuma"
 	case "":
 		return ""
 	default:

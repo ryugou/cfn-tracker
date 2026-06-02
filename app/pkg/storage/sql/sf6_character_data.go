@@ -93,6 +93,30 @@ func (s *Storage) ReplaceSF6CharacterMoves(ctx context.Context, character, local
 				:drive_gauge_loss_punish, :sa_gauge_gain, :attribute, :remarks, :raw_text,
 				:source_url, :fetched_at, DATETIME('NOW')
 			)
+			ON CONFLICT(character, locale, source, category, name, command, startup, active)
+			DO UPDATE SET
+				description = excluded.description,
+				recovery = excluded.recovery,
+				hit_advantage = excluded.hit_advantage,
+				block_advantage = excluded.block_advantage,
+				cancel = excluded.cancel,
+				damage = excluded.damage,
+				combo_scaling = excluded.combo_scaling,
+				drive_gauge_gain_hit = excluded.drive_gauge_gain_hit,
+				drive_gauge_loss_block = excluded.drive_gauge_loss_block,
+				drive_gauge_loss_punish = excluded.drive_gauge_loss_punish,
+				sa_gauge_gain = excluded.sa_gauge_gain,
+				attribute = excluded.attribute,
+				remarks = CASE
+					WHEN sf6_character_moves.remarks = '' THEN excluded.remarks
+					WHEN excluded.remarks = '' THEN sf6_character_moves.remarks
+					WHEN sf6_character_moves.remarks = excluded.remarks THEN sf6_character_moves.remarks
+					ELSE sf6_character_moves.remarks || ' / ' || excluded.remarks
+				END,
+				raw_text = excluded.raw_text,
+				source_url = excluded.source_url,
+				fetched_at = excluded.fetched_at,
+				updated_at = DATETIME('NOW')
 		`, move); err != nil {
 			return fmt.Errorf("insert sf6 character move %s/%s: %w", move.Source, move.Name, err)
 		}

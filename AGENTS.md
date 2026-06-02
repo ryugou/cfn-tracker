@@ -318,10 +318,15 @@ Constraints/indexes:
 Collection spec:
 
 - Parser lives in `app/pkg/tracker/sf6/official`.
-- Manual sync tool: `go run ./tools/sync-sf6-character-data -character ingrid -locale ja-jp`.
+- Manual single-character sync: `go run ./tools/sync-sf6-character-data -character ingrid -locale ja-jp`.
+- Manual all-character sync: `go run ./tools/sync-sf6-character-data -all -locale ja-jp -delay 500ms`.
 - App command: `SyncSF6CharacterData(character, locale)`.
 - The advice prompt receives a relevant subset as `characterKnowledge`.
 - Character-specific move names, commands, frame values, combos, or sequence names may be used only when grounded by `characterKnowledge` or PunkRecord evidence. Missing character-specific details must not be guessed.
+- Official character-page slugs differ from some CFN/internal names:
+  - Akuma: `gouki_akuma`
+  - M. Bison: `vega_mbison`
+  - E. Honda: `ehonda`
 
 ## Advice Generation
 
