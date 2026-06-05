@@ -35,3 +35,9 @@ type BenchmarkRankAverage struct {
 	Count      int                `json:"count"`
 	Stats      *PlayStatsSnapshot `json:"stats"`
 }
+
+type BenchmarkRefreshTarget struct {
+	UserId    string `db:"user_id" json:"userId"`
+	Character string `db:"character" json:"character"`
+	FetchedAt string `db:"fetched_at" json:"fetchedAt"`
+}

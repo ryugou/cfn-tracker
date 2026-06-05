@@ -172,7 +172,11 @@ func (ch *TrackingHandler) syncMatchToVegapunk(ctx context.Context, match model.
 }
 
 func (ch *TrackingHandler) syncLatestPlayStatsToVegapunk(ctx context.Context, userId string) {
-	rows, err := ch.sqlDb.GetRecentPlayStatsSnapshots(ctx, userId, 2)
+	syncLatestPlayStatsToVegapunkDB(ctx, ch.sqlDb, userId)
+}
+
+func syncLatestPlayStatsToVegapunkDB(ctx context.Context, db *sql.Storage, userId string) {
+	rows, err := db.GetRecentPlayStatsSnapshots(ctx, userId, 2)
 	if err != nil {
 		slog.Warn("vegapunk play stats sync lookup failed", slog.Any("error", err))
 		return
@@ -193,11 +197,11 @@ func (ch *TrackingHandler) syncLatestPlayStatsToVegapunk(ctx context.Context, us
 	graph.addPlayStatsSnapshot(playerID, *rows[len(rows)-1], previous)
 	latest := rows[len(rows)-1]
 	dedupe := vegapunkDedupeKey("play_stats", userId, strconv.FormatInt(latest.Id, 10), latest.SnapshotAt)
-	if err := enqueueVegapunkGraph(ctx, ch.sqlDb, "play_stats", dedupe, &graph); err != nil {
+	if err := enqueueVegapunkGraph(ctx, db, "play_stats", dedupe, &graph); err != nil {
 		slog.Warn("vegapunk play stats enqueue failed", slog.Any("error", err))
 		return
 	}
-	go processVegapunkSyncQueue(context.Background(), ch.sqlDb)
+	go processVegapunkSyncQueue(context.Background(), db)
 }
 
 func (ch *CommandHandler) syncAdviceRunToVegapunk(ctx context.Context, run *model.AdviceRun) {

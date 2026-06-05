@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
@@ -190,4 +191,47 @@ func (s *Storage) FindSF6CharacterMoves(ctx context.Context, character, locale s
 		return nil, fmt.Errorf("find sf6 character moves: %w", err)
 	}
 	return rows, nil
+}
+
+func (s *Storage) SF6CharacterDataFresh(ctx context.Context, locale string, expectedCharacters int, maxAge time.Duration) (bool, error) {
+	if locale == "" {
+		locale = "ja-jp"
+	}
+	var row struct {
+		CharacterCount int    `db:"character_count"`
+		OldestFetched  string `db:"oldest_fetched"`
+	}
+	if err := s.db.GetContext(ctx, &row, `
+		SELECT
+			COUNT(DISTINCT character) AS character_count,
+			COALESCE(MIN(fetched_at), '') AS oldest_fetched
+		FROM sf6_character_moves
+		WHERE locale = ?
+	`, locale); err != nil {
+		return false, fmt.Errorf("select sf6 character data freshness: %w", err)
+	}
+	if row.CharacterCount < expectedCharacters || row.OldestFetched == "" {
+		return false, nil
+	}
+	oldest, err := parseSQLiteTime(row.OldestFetched)
+	if err != nil {
+		return false, nil
+	}
+	return time.Since(oldest) < maxAge, nil
+}
+
+func parseSQLiteTime(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, fmt.Errorf("empty time")
+	}
+	for _, layout := range []string{
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+	} {
+		t, err := time.ParseInLocation(layout, value, time.Local)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unsupported time format %q", value)
 }

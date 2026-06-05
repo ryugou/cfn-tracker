@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
@@ -328,6 +329,39 @@ func TestSelectCharacterKnowledgeMovesForDriveImpactIsSmallAndRelevant(t *testin
 		if !seen[expected] {
 			t.Fatalf("missing %q in selected %#v", expected, selected)
 		}
+	}
+}
+
+func TestStaleBenchmarkTargets(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	targets := []model.BenchmarkRefreshTarget{
+		{UserId: "u1", Character: "Ingrid", FetchedAt: ""},
+		{UserId: "u1", Character: "JP", FetchedAt: now.Add(-25 * time.Hour).Format("2006-01-02 15:04:05")},
+		{UserId: "u1", Character: "Ken", FetchedAt: now.Add(-2 * time.Hour).Format("2006-01-02 15:04:05")},
+	}
+	stale := staleBenchmarkTargets(targets, now, 24*time.Hour)
+	if len(stale) != 2 {
+		t.Fatalf("stale len = %d, want 2: %#v", len(stale), stale)
+	}
+	if stale[0].Character != "Ingrid" || stale[1].Character != "JP" {
+		t.Fatalf("stale targets = %#v", stale)
+	}
+}
+
+func TestLatestPlayStatsFresh(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	if latestPlayStatsFresh(nil, now, time.Hour) {
+		t.Fatal("nil snapshot should be stale")
+	}
+	if !latestPlayStatsFresh(&model.PlayStatsSnapshot{
+		SnapshotAt: now.Add(-30 * time.Minute).Format("2006-01-02 15:04:05"),
+	}, now, time.Hour) {
+		t.Fatal("recent snapshot should be fresh")
+	}
+	if latestPlayStatsFresh(&model.PlayStatsSnapshot{
+		SnapshotAt: now.Add(-2 * time.Hour).Format("2006-01-02 15:04:05"),
+	}, now, time.Hour) {
+		t.Fatal("old snapshot should be stale")
 	}
 }
 

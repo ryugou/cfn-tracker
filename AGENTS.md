@@ -80,6 +80,11 @@ Important behavior:
 - A baseline snapshot is captured at tracking start if there is no recent snapshot.
 - Additional snapshots are captured on new matches. `match_replay_id` is set when available.
 - `corner_time` and `cornered_time` are REAL values after migration `000005`.
+- Automatic refresh:
+  - Started from Wails `OnStartup` via `StartAutoDataRefresh`.
+  - For each registered user, fetches `/play` and saves a snapshot when the latest local snapshot is missing or older than 1 hour.
+  - Waits 1 minute after app startup before the first play-stats check.
+  - Waits 30 seconds between registered users to reduce authenticated site load.
 
 Identity/time columns:
 
@@ -197,6 +202,12 @@ Benchmark collection spec:
 - Benchmark data is cached indefinitely for normal use.
 - Refresh resets/replaces the cache for the current source user and character.
 - Rate limits matter because this uses the authenticated site data path. Avoid tight loops and unnecessary refreshes.
+- Automatic refresh:
+  - Started from Wails `OnStartup` via `StartAutoDataRefresh`.
+  - Targets registered users and characters that already exist in tracked `matches`.
+  - Refreshes only when the user/character benchmark cache is missing or older than 24 hours.
+  - Waits 2 minutes after app startup before the first benchmark check.
+  - Waits 2 minutes between stale benchmark jobs to reduce authenticated site load.
 
 ### advice_runs
 
@@ -323,6 +334,10 @@ Collection spec:
 - App command: `SyncSF6CharacterData(character, locale)`.
 - The advice prompt receives a relevant subset as `characterKnowledge`.
 - Character-specific move names, commands, frame values, combos, or sequence names may be used only when grounded by `characterKnowledge` or PunkRecord evidence. Missing character-specific details must not be guessed.
+- Automatic refresh:
+  - Started from Wails `OnStartup` via `StartAutoDataRefresh`.
+  - Refreshes all known official character slugs when the local cache is incomplete or the oldest `fetched_at` is older than 1 hour.
+  - Uses a 1-second delay between characters to avoid burst requests.
 - Official character-page slugs differ from some CFN/internal names:
   - Akuma: `gouki_akuma`
   - M. Bison: `vega_mbison`
