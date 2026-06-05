@@ -8,74 +8,25 @@ import (
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 	"github.com/williamsjokvist/cfn-tracker/pkg/tracker/sf6"
-	"github.com/williamsjokvist/cfn-tracker/pkg/tracker/sf6/official"
 )
 
 const (
-	officialCharacterRefreshAge      = time.Hour
-	officialCharacterRefreshInterval = time.Hour
-	officialCharacterRefreshDelay    = time.Second
-	playStatsRefreshAge              = time.Hour
-	playStatsRefreshInterval         = time.Hour
-	playStatsRefreshInitialDelay     = time.Minute
-	playStatsRefreshUserDelay        = 30 * time.Second
-	benchmarkRefreshAge              = 24 * time.Hour
-	benchmarkRefreshInterval         = time.Hour
-	benchmarkRefreshInitialDelay     = 2 * time.Minute
-	benchmarkRefreshJobDelay         = 2 * time.Minute
+	playStatsRefreshAge          = time.Hour
+	playStatsRefreshInterval     = time.Hour
+	playStatsRefreshInitialDelay = time.Minute
+	playStatsRefreshUserDelay    = 30 * time.Second
+	benchmarkRefreshAge          = 24 * time.Hour
+	benchmarkRefreshInterval     = time.Hour
+	benchmarkRefreshInitialDelay = 2 * time.Minute
+	benchmarkRefreshJobDelay     = 2 * time.Minute
 )
 
 func StartAutoDataRefresh(ctx context.Context, ch *CommandHandler) {
 	if ch == nil || ch.sqlDb == nil {
 		return
 	}
-	go ch.runOfficialCharacterRefreshLoop(ctx)
 	go ch.runPlayStatsRefreshLoop(ctx)
 	go ch.runBenchmarkRefreshLoop(ctx)
-}
-
-func (ch *CommandHandler) runOfficialCharacterRefreshLoop(ctx context.Context) {
-	ch.refreshOfficialCharacterDataIfStale(ctx)
-	ticker := time.NewTicker(officialCharacterRefreshInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			ch.refreshOfficialCharacterDataIfStale(ctx)
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (ch *CommandHandler) refreshOfficialCharacterDataIfStale(ctx context.Context) {
-	fresh, err := ch.sqlDb.SF6CharacterDataFresh(ctx, "ja-jp", len(official.AllCharacterSlugs), officialCharacterRefreshAge)
-	if err != nil {
-		slog.Warn("official sf6 character data freshness check failed", slog.Any("error", err))
-		return
-	}
-	if fresh {
-		return
-	}
-	client := official.NewClient()
-	for i, slug := range official.AllCharacterSlugs {
-		if ctx.Err() != nil {
-			return
-		}
-		moves, err := client.FetchCharacterData(ctx, slug, "ja-jp")
-		if err != nil {
-			slog.Warn("official sf6 character data refresh failed", slog.String("character", slug), slog.Any("error", err))
-			continue
-		}
-		if err := ch.sqlDb.ReplaceSF6CharacterMoves(ctx, slug, "ja-jp", moves); err != nil {
-			slog.Warn("official sf6 character data save failed", slog.String("character", slug), slog.Any("error", err))
-			continue
-		}
-		slog.Info("official sf6 character data refreshed", slog.String("character", slug), slog.Int("moves", len(moves)))
-		if i < len(official.AllCharacterSlugs)-1 && !sleepWithContext(ctx, officialCharacterRefreshDelay) {
-			return
-		}
-	}
 }
 
 func (ch *CommandHandler) runBenchmarkRefreshLoop(ctx context.Context) {

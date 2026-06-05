@@ -334,10 +334,7 @@ Collection spec:
 - App command: `SyncSF6CharacterData(character, locale)`.
 - The advice prompt receives a relevant subset as `characterKnowledge`.
 - Character-specific move names, commands, frame values, combos, or sequence names may be used only when grounded by `characterKnowledge` or PunkRecord evidence. Missing character-specific details must not be guessed.
-- Automatic refresh:
-  - Started from Wails `OnStartup` via `StartAutoDataRefresh`.
-  - Refreshes all known official character slugs when the local cache is incomplete or the oldest `fetched_at` is older than 1 hour.
-  - Uses a 1-second delay between characters to avoid burst requests.
+- Official character data does not auto-refresh on startup because this data rarely changes. If Capcom updates move/frame data, run the manual all-character sync.
 - Official character-page slugs differ from some CFN/internal names:
   - Akuma: `gouki_akuma`
   - M. Bison: `vega_mbison`
