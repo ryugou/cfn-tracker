@@ -209,6 +209,16 @@ Benchmark collection spec:
   - Waits 2 minutes after app startup before the first benchmark check.
   - Waits 2 minutes between stale benchmark jobs to reduce authenticated site load.
 
+Match / play-stat automatic refresh:
+
+- Started from Wails `OnStartup` via `StartAutoDataRefresh`.
+- Registered CFN users are scanned every 3 minutes through the authenticated SF6 battlelog path.
+- Missing ranked matches are imported with `SF6Tracker.BackfillMatches`, deduped by replay ID.
+- Imported matches are saved to SQLite, text output, and the Vegapunk sync queue.
+- When at least one missing match is imported, the app fetches one current `/play` snapshot and attaches it to the newest imported replay ID.
+- Separate stale `/play` snapshots are still refreshed hourly for registered users when no fresh snapshot exists.
+- Existing historical matches can be recovered from battlelog while they remain available, but exact historical `/play` per-match values cannot be reconstructed after the fact because Capcom returns only the current `/play` state.
+
 ### advice_runs
 
 One generated advice batch.
