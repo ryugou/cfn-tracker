@@ -134,7 +134,7 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 
 	dbFallback := buildDBOnlyAdvice(signals)
 	dbCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModeDBOnly, sonnetModel, apiKey, apiKeyErr, adviceCtx, nil, dbFallback)
-	graphEvidence := ch.searchVegapunkEvidence(ctx, character, dbCandidate.Theme, dbCandidate.Summary)
+	graphEvidence := ch.searchVegapunkEvidence(ctx, character, signals, dbCandidate.Theme, dbCandidate.Summary)
 	graphSonnetFallback := buildGraphRAGAdvice(signals, graphEvidence)
 	graphSonnetCandidate := ch.generateAdviceWithLLM(ctx, model.AdviceModePunkRecordSonnet46, sonnetModel, apiKey, apiKeyErr, adviceCtx, graphEvidence, graphSonnetFallback)
 	graphOpusFallback := buildGraphRAGAdvice(signals, graphEvidence)
@@ -1039,7 +1039,7 @@ func round2(value float64) float64 {
 	return math.Round(value*100) / 100
 }
 
-func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character, theme, summary string) []model.AdviceEvidence {
+func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character string, signals []adviceSignal, theme, summary string) []model.AdviceEvidence {
 	target := os.Getenv("VEGAPUNK_GRPC_TARGET")
 	if target == "" {
 		target = "vegapunk.local:6840"
@@ -1056,7 +1056,8 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	if protoImportPath == "" {
 		protoImportPath = filepath.Dir(protoPath)
 	}
-	query := fmt.Sprintf("SF6 %s %s %s 過去施策 前回アドバイス 監視指標 結果 副作用", character, theme, summary)
+	top := firstMeaningfulSignal(signals)
+	query := fmt.Sprintf("SF6 %s %s %s %s %s 過去施策 前回アドバイス 監視指標 結果 副作用", character, top.key, top.label, theme, summary)
 	req := map[string]any{
 		"text":   query,
 		"mode":   "hybrid",
@@ -1119,12 +1120,84 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 		if title == "" || title == "message" {
 			title = firstLine(text)
 		}
-		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: title, Text: text, Score: row.Score})
+		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: summarizePunkRecordTitle(title), Text: summarizePunkRecordEvidence(text), Score: row.Score})
+	}
+	evidence = rankPunkRecordEvidence(evidence, top)
+	if len(evidence) > 5 {
+		evidence = evidence[:5]
 	}
 	if len(evidence) == 0 {
 		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: "GraphRAG検索結果なし", Text: query})
 	}
 	return evidence
+}
+
+func rankPunkRecordEvidence(evidence []model.AdviceEvidence, top adviceSignal) []model.AdviceEvidence {
+	type scored struct {
+		ev    model.AdviceEvidence
+		score float64
+		index int
+	}
+	rows := make([]scored, 0, len(evidence))
+	for i, ev := range evidence {
+		text := strings.ToLower(ev.Title + "\n" + ev.Text)
+		score := ev.Score
+		if strings.Contains(text, strings.ToLower(top.key)) || strings.Contains(ev.Title+ev.Text, top.label) {
+			score += 2.0
+		}
+		if strings.Contains(text, "advice") || strings.Contains(text, "adviceaction") || strings.Contains(ev.Title, "advice") {
+			score += 1.0
+		}
+		if strings.Contains(ev.Title+ev.Text, "前回") || strings.Contains(ev.Title+ev.Text, "継続") || strings.Contains(ev.Title+ev.Text, "監視") {
+			score += 0.5
+		}
+		if top.key != "received_drive_impact" && strings.Contains(ev.Title+ev.Text, "DI被弾") {
+			score -= 0.75
+		}
+		rows = append(rows, scored{ev: ev, score: score, index: i})
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].score == rows[j].score {
+			return rows[i].index < rows[j].index
+		}
+		return rows[i].score > rows[j].score
+	})
+	out := make([]model.AdviceEvidence, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.ev)
+	}
+	return out
+}
+
+func summarizePunkRecordTitle(title string) string {
+	title = strings.TrimSpace(title)
+	title = strings.TrimPrefix(title, "punk_record_opus_4_6 advice: ")
+	title = strings.TrimPrefix(title, "punk_record_sonnet_4_6 advice: ")
+	if title == "" {
+		return "PunkRecord evidence"
+	}
+	return truncateRunes(title, 80)
+}
+
+func summarizePunkRecordEvidence(text string) string {
+	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+	text = strings.TrimPrefix(text, "punk_record_opus_4_6 advice: ")
+	text = strings.TrimPrefix(text, "punk_record_sonnet_4_6 advice: ")
+	if text == "" {
+		return ""
+	}
+	return truncateRunes(text, 360)
+}
+
+func truncateRunes(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return string(runes[:limit]) + "..."
 }
 
 func isPunkRecordSearchNoise(id, nodeType, text string) bool {

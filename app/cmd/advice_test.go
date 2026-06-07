@@ -407,6 +407,32 @@ func TestPriorAdviceForPromptFromRunsKeepsPunkRecordCandidates(t *testing.T) {
 	}
 }
 
+func TestRankPunkRecordEvidencePrioritizesSameMetricAdvice(t *testing.T) {
+	top := adviceSignal{key: "received_punish_counter", label: "パニカン被弾"}
+	got := rankPunkRecordEvidence([]model.AdviceEvidence{
+		{Source: "vegapunk", Title: "DI被弾の削減", Text: "DI被弾の古い施策", Score: 0.90},
+		{Source: "vegapunk", Title: "パニカン被弾の継続削減 advice", Text: "前回 監視 継続", Score: 0.20},
+		{Source: "vegapunk", Title: "一般攻略", Text: "ガードする", Score: 0.50},
+	}, top)
+	if got[0].Title != "パニカン被弾の継続削減 advice" {
+		t.Fatalf("top evidence = %q, want same metric prior advice", got[0].Title)
+	}
+	if got[0].Score != 0.20 {
+		t.Fatalf("display score should keep original search score, got %v", got[0].Score)
+	}
+}
+
+func TestSummarizePunkRecordEvidenceTrimsRawAdvicePrefixAndLength(t *testing.T) {
+	text := "punk_record_opus_4_6 advice: " + strings.Repeat("パニカン被弾の継続削減 ", 50)
+	got := summarizePunkRecordEvidence(text)
+	if strings.Contains(got, "punk_record_opus_4_6 advice:") {
+		t.Fatalf("raw advice prefix should be hidden: %s", got)
+	}
+	if len([]rune(got)) > 363 {
+		t.Fatalf("summary too long: %d runes", len([]rune(got)))
+	}
+}
+
 func TestRequestAdviceLLMRejectsUnresolved1PasswordRef(t *testing.T) {
 	_, err := requestAdviceLLM(
 		context.Background(),

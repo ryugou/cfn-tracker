@@ -504,8 +504,17 @@ func TestSaveAndListAdviceRuns(t *testing.T) {
 	if err := store.SaveAdviceRun(ctx, first); err != nil {
 		t.Fatalf("SaveAdviceRun(first): %v", err)
 	}
+	if first.CreatedAt == "" {
+		t.Fatal("first CreatedAt should be populated after save")
+	}
+	if first.Candidates[0].CreatedAt == "" {
+		t.Fatal("first candidate CreatedAt should be populated after save")
+	}
 	if err := store.SaveAdviceRun(ctx, second); err != nil {
 		t.Fatalf("SaveAdviceRun(second): %v", err)
+	}
+	if second.CreatedAt == "" {
+		t.Fatal("second CreatedAt should be populated after save")
 	}
 	runs, err := store.GetAdviceRuns(ctx, "advice-u", "JP", 20)
 	if err != nil {

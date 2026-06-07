@@ -27,6 +27,9 @@ func (s *Storage) SaveAdviceRun(ctx context.Context, run *model.AdviceRun) error
 		return fmt.Errorf("get advice run id: %w", err)
 	}
 	run.Id = runId
+	if err := tx.GetContext(ctx, &run.CreatedAt, `SELECT created_at FROM advice_runs WHERE id = ?`, runId); err != nil {
+		return fmt.Errorf("get advice run created_at: %w", err)
+	}
 
 	for _, candidate := range run.Candidates {
 		if candidate == nil {
@@ -51,6 +54,9 @@ func (s *Storage) SaveAdviceRun(ctx context.Context, run *model.AdviceRun) error
 			return fmt.Errorf("insert advice candidate: %w", err)
 		}
 		candidate.Id, _ = res.LastInsertId()
+		if err := tx.GetContext(ctx, &candidate.CreatedAt, `SELECT created_at FROM advice_candidates WHERE id = ?`, candidate.Id); err != nil {
+			return fmt.Errorf("get advice candidate created_at: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
