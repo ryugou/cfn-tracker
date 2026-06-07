@@ -422,6 +422,32 @@ func TestRankPunkRecordEvidencePrioritizesSameMetricAdvice(t *testing.T) {
 	}
 }
 
+func TestFilterPunkRecordEvidenceForDisplayDedupesAndDropsOffMetricAdvice(t *testing.T) {
+	top := adviceSignal{key: "received_punish_counter", label: "パニカン被弾"}
+	got := filterPunkRecordEvidenceForDisplay([]model.AdviceEvidence{
+		{Source: "vegapunk", Title: "パニカン被弾の継続削減 ― ガード継続", Text: "前回施策"},
+		{Source: "vegapunk", Title: "パニカン被弾の継続削減 ― 暴れ分類", Text: "類似施策"},
+		{Source: "vegapunk", Title: "DI被弾の削減", Text: "DI被弾の古い施策"},
+		{Source: "vegapunk", Title: "パニカン被弾の削減：不用意な技振り", Text: "別施策"},
+		{Source: "vegapunk", Title: "パニカン被弾の起き上がり対策", Text: "別施策2"},
+		{Source: "vegapunk", Title: "パニカン被弾の中距離対策", Text: "別施策3"},
+	}, top, 3)
+	if len(got) != 3 {
+		t.Fatalf("filtered evidence count = %d, want 3: %#v", len(got), got)
+	}
+	for _, ev := range got {
+		if strings.Contains(ev.Title+ev.Text, "DI被弾") {
+			t.Fatalf("off-metric DI advice should be hidden: %#v", ev)
+		}
+	}
+	if got[0].Title != "パニカン被弾の継続削減 ― ガード継続" {
+		t.Fatalf("first evidence changed unexpectedly: %#v", got[0])
+	}
+	if got[1].Title == "パニカン被弾の継続削減 ― 暴れ分類" {
+		t.Fatalf("similar duplicate should have been removed: %#v", got)
+	}
+}
+
 func TestSummarizePunkRecordEvidenceTrimsRawAdvicePrefixAndLength(t *testing.T) {
 	text := "punk_record_opus_4_6 advice: " + strings.Repeat("パニカン被弾の継続削減 ", 50)
 	got := summarizePunkRecordEvidence(text)

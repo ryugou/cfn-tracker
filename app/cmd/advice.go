@@ -724,6 +724,7 @@ func adviceSystemPrompt(mode model.AdviceMode) string {
 		"characterKnowledgeにある公式技名・コマンド・フレームは、必要なら根拠として使ってください。未登録のキャラ固有情報は推測しないでください。",
 		"キャラ固有情報が足りない場合だけ、キャンセル可能技、小技、ガード継続、DI返し、ジャンプ脱出などの一般化した行動カテゴリで書いてください。",
 		"ジャストパリィとDI返しは別の行動です。ジャストパリィ値が低いことをDI返し不能やDI返し成功率ゼロの根拠にしないでください。",
+		"PunkRecord/GraphRAG evidenceは過去施策や関連知識の検索結果です。「GraphRAGが推奨した」とは書かず、「過去施策として記録されている」「過去施策と整合する」と表現してください。",
 		"短期間で言うことを変えすぎず、成功条件と副作用として監視する指標を必ず含めてください。",
 		modeInstruction,
 		"返答はJSONのみ。Markdownや説明文は不要です。",
@@ -1123,13 +1124,78 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character 
 		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: summarizePunkRecordTitle(title), Text: summarizePunkRecordEvidence(text), Score: row.Score})
 	}
 	evidence = rankPunkRecordEvidence(evidence, top)
-	if len(evidence) > 5 {
-		evidence = evidence[:5]
-	}
+	evidence = filterPunkRecordEvidenceForDisplay(evidence, top, 3)
 	if len(evidence) == 0 {
 		evidence = append(evidence, model.AdviceEvidence{Source: "vegapunk", Title: "GraphRAG検索結果なし", Text: query})
 	}
 	return evidence
+}
+
+func filterPunkRecordEvidenceForDisplay(evidence []model.AdviceEvidence, top adviceSignal, limit int) []model.AdviceEvidence {
+	if limit <= 0 {
+		return nil
+	}
+	out := make([]model.AdviceEvidence, 0, min(limit, len(evidence)))
+	seen := map[string]bool{}
+	for _, ev := range evidence {
+		if isOffMetricPriorAdvice(ev, top) {
+			continue
+		}
+		key := punkRecordEvidenceDedupeKey(ev)
+		if key != "" && seen[key] {
+			continue
+		}
+		if key != "" {
+			seen[key] = true
+		}
+		out = append(out, ev)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func isOffMetricPriorAdvice(ev model.AdviceEvidence, top adviceSignal) bool {
+	text := ev.Title + "\n" + ev.Text
+	if strings.Contains(text, top.label) || strings.Contains(strings.ToLower(text), strings.ToLower(top.key)) {
+		return false
+	}
+	if top.key != "received_drive_impact" && strings.Contains(text, "DI被弾") {
+		return true
+	}
+	if top.key != "received_punish_counter" && strings.Contains(text, "パニカン被弾") {
+		return true
+	}
+	if top.key != "throw_count" && strings.Contains(text, "投げ") && !strings.Contains(text, "投げ抜け") {
+		return true
+	}
+	if top.key != "throw_tech" && strings.Contains(text, "投げ抜け") {
+		return true
+	}
+	if top.key != "cornered_time" && strings.Contains(text, "壁際") {
+		return true
+	}
+	return false
+}
+
+func punkRecordEvidenceDedupeKey(ev model.AdviceEvidence) string {
+	title := ev.Title
+	for _, sep := range []string{" ― ", " ─ ", "：", ":"} {
+		if idx := strings.Index(title, sep); idx >= 0 {
+			title = title[:idx]
+			break
+		}
+	}
+	title = strings.ToLower(strings.Join(strings.Fields(title), ""))
+	if title != "" {
+		return title
+	}
+	text := []rune(strings.ToLower(strings.Join(strings.Fields(ev.Text), "")))
+	if len(text) > 80 {
+		text = text[:80]
+	}
+	return string(text)
 }
 
 func rankPunkRecordEvidence(evidence []model.AdviceEvidence, top adviceSignal) []model.AdviceEvidence {
