@@ -16,7 +16,7 @@ const (
 	matchRefreshUserDelay        = 3 * time.Minute
 	playStatsRefreshAge          = time.Hour
 	playStatsRefreshInterval     = time.Hour
-	playStatsRefreshInitialDelay = time.Minute
+	playStatsRefreshInitialDelay = 4 * time.Minute
 	playStatsRefreshUserDelay    = 30 * time.Second
 	benchmarkRefreshAge          = 24 * time.Hour
 	benchmarkRefreshInterval     = time.Hour

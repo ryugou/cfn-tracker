@@ -58,10 +58,114 @@ func (s *Storage) SavePlayStats(ctx context.Context, snap model.PlayStatsSnapsho
 		strings.TrimSpace(playStatsInsertColumns),
 		strings.TrimSpace(playStatsInsertValues),
 	)
-	if _, err := s.db.NamedExecContext(ctx, query, snap); err != nil {
+	res, err := s.db.NamedExecContext(ctx, query, snap)
+	if err != nil {
 		return fmt.Errorf("insert play stats snapshot: %w", err)
 	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("get inserted play stats snapshot id: %w", err)
+	}
+	if snap.MatchReplayId.Valid && snap.MatchReplayId.String != "" {
+		if err := s.saveMatchPlayStatsFromSnapshot(ctx, id, snap.MatchReplayId.String); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (s *Storage) saveMatchPlayStatsFromSnapshot(ctx context.Context, snapshotId int64, replayId string) error {
+	current, err := s.getPlayStatsSnapshotByID(ctx, snapshotId)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return nil
+	}
+	previous, err := s.getPreviousPlayStatsSnapshot(ctx, current.UserId, current.Id)
+	if err != nil {
+		return err
+	}
+	if previous == nil {
+		return nil
+	}
+	delta := buildMatchPlayStatsDelta(current, previous, replayId)
+	query := `
+		INSERT INTO match_play_stats (
+			user_id, match_replay_id, snapshot_id, previous_snapshot_id,
+			drive_impact, received_drive_impact, just_parry, throw_tech,
+			corner_time, cornered_time, throw_count, received_punish_counter
+		) VALUES (
+			:user_id, :match_replay_id, :snapshot_id, :previous_snapshot_id,
+			:drive_impact, :received_drive_impact, :just_parry, :throw_tech,
+			:corner_time, :cornered_time, :throw_count, :received_punish_counter
+		)
+		ON CONFLICT(match_replay_id) DO UPDATE SET
+			snapshot_id = excluded.snapshot_id,
+			previous_snapshot_id = excluded.previous_snapshot_id,
+			computed_at = DATETIME('NOW'),
+			drive_impact = excluded.drive_impact,
+			received_drive_impact = excluded.received_drive_impact,
+			just_parry = excluded.just_parry,
+			throw_tech = excluded.throw_tech,
+			corner_time = excluded.corner_time,
+			cornered_time = excluded.cornered_time,
+			throw_count = excluded.throw_count,
+			received_punish_counter = excluded.received_punish_counter
+	`
+	if _, err := s.db.NamedExecContext(ctx, query, delta); err != nil {
+		return fmt.Errorf("save match play stats delta: %w", err)
+	}
+	return nil
+}
+
+func (s *Storage) getPlayStatsSnapshotByID(ctx context.Context, id int64) (*model.PlayStatsSnapshot, error) {
+	var rows []*model.PlayStatsSnapshot
+	if err := s.db.SelectContext(ctx, &rows, `
+		SELECT * FROM play_stats_snapshots
+		WHERE id = ?
+		LIMIT 1
+	`, id); err != nil {
+		return nil, fmt.Errorf("get play stats snapshot by id: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
+}
+
+func (s *Storage) getPreviousPlayStatsSnapshot(ctx context.Context, userId string, currentId int64) (*model.PlayStatsSnapshot, error) {
+	var rows []*model.PlayStatsSnapshot
+	if err := s.db.SelectContext(ctx, &rows, `
+		SELECT * FROM play_stats_snapshots
+		WHERE user_id = ? AND id < ?
+		ORDER BY snapshot_at DESC, id DESC
+		LIMIT 1
+	`, userId, currentId); err != nil {
+		return nil, fmt.Errorf("get previous play stats snapshot: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
+}
+
+func buildMatchPlayStatsDelta(current, previous *model.PlayStatsSnapshot, replayId string) model.MatchPlayStats {
+	const scale = 100.0
+	return model.MatchPlayStats{
+		UserId:                current.UserId,
+		MatchReplayId:         replayId,
+		SnapshotId:            current.Id,
+		PreviousSnapshotId:    previous.Id,
+		DriveImpact:           (current.DriveImpact - previous.DriveImpact) * scale,
+		ReceivedDriveImpact:   (current.ReceivedDriveImpact - previous.ReceivedDriveImpact) * scale,
+		JustParry:             (current.JustParry - previous.JustParry) * scale,
+		ThrowTech:             (current.ThrowTech - previous.ThrowTech) * scale,
+		CornerTime:            (current.CornerTime - previous.CornerTime) * scale,
+		CorneredTime:          (current.CorneredTime - previous.CorneredTime) * scale,
+		ThrowCount:            (current.ThrowCount - previous.ThrowCount) * scale,
+		ReceivedPunishCounter: (current.ReceivedPunishCounter - previous.ReceivedPunishCounter) * scale,
+	}
 }
 
 // GetPlayStatsHistory returns user-wide play-stats snapshots. The Capcom
@@ -216,35 +320,22 @@ func (s *Storage) GetMatchesWithPlayStats(
 			replayIds = append(replayIds, m.ReplayID)
 		}
 	}
-	statsByReplay := map[string]*model.PlayStatsSnapshot{}
+	statsByReplay := map[string]*model.MatchPlayStats{}
 	if len(replayIds) > 0 {
-		// Snapshots are user-wide (one per match_replay_id regardless of
-		// favorite-character tag), so we look them up by (user_id,
-		// match_replay_id) only — joining on character would drop
-		// snapshots whose stored character tag doesn't match the match's
-		// character (e.g. when the user's favorite changed mid-session).
-		//
-		// ORDER BY snapshot_at ASC, id ASC pins the iteration order so the
-		// later (newest) row wins when the same (user_id, match_replay_id)
-		// has multiple snapshots — without it, map assignment is at the
-		// mercy of SQLite's row order and a duplicate could leave an older
-		// snapshot stuck in the result.
 		q, args, err := sqlx.In(`
-			SELECT * FROM play_stats_snapshots
+			SELECT * FROM match_play_stats
 			WHERE user_id = ? AND match_replay_id IN (?)
-			ORDER BY snapshot_at ASC, id ASC
+			ORDER BY computed_at ASC, id ASC
 		`, userId, replayIds)
 		if err != nil {
 			return nil, fmt.Errorf("prepare stats lookup: %w", err)
 		}
-		var rows []*model.PlayStatsSnapshot
+		var rows []*model.MatchPlayStats
 		if err := s.db.SelectContext(ctx, &rows, q, args...); err != nil {
 			return nil, fmt.Errorf("fetch stats for matches: %w", err)
 		}
 		for _, r := range rows {
-			if r.MatchReplayId.Valid {
-				statsByReplay[r.MatchReplayId.String] = r
-			}
+			statsByReplay[r.MatchReplayId] = r
 		}
 	}
 

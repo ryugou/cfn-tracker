@@ -348,9 +348,25 @@ export namespace model {
 	    losses: number;
 	    winRate: number;
 	}
+	export interface MatchPlayStats {
+	    id: number;
+	    userId: string;
+	    matchReplayId: string;
+	    snapshotId: number;
+	    previousSnapshotId: number;
+	    computedAt: string;
+	    driveImpact: number;
+	    receivedDriveImpact: number;
+	    justParry: number;
+	    throwTech: number;
+	    cornerTime: number;
+	    corneredTime: number;
+	    throwCount: number;
+	    receivedPunishCounter: number;
+	}
 	export interface MatchWithStats {
 	    match: Match;
-	    stats?: PlayStatsSnapshot;
+	    stats?: MatchPlayStats;
 	}
 
 	export interface SF6CharacterMove {

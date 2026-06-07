@@ -823,8 +823,8 @@ func TestGetMatchesWithPlayStatsDuplicateSnapshotPicksLatest(t *testing.T) {
 	if got[0].Stats == nil {
 		t.Fatal("expected stats attached, got nil")
 	}
-	if got[0].Stats.DriveImpact != 0.999 {
-		t.Errorf("DriveImpact = %v, want 0.999 (newest snapshot wins)", got[0].Stats.DriveImpact)
+	if got := got[0].Stats.DriveImpact; got < 88.79 || got > 88.81 {
+		t.Errorf("DriveImpact = %v, want about 88.80 (newest computed delta wins)", got)
 	}
 }
 
@@ -855,7 +855,20 @@ func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
 	if err := store.SaveMatch(ctx, matchNoStats); err != nil {
 		t.Fatalf("SaveMatch: %v", err)
 	}
-	if err := store.SavePlayStats(ctx, sampleSnapshot("user-5", "JP", "replay-with-stats")); err != nil {
+	baseline := sampleSnapshot("user-5", "JP", "")
+	baseline.DriveImpact = 1.00
+	baseline.ReceivedDriveImpact = 1.00
+	baseline.ThrowTech = 0.10
+	baseline.CornerTime = 3.00
+	if err := store.SavePlayStats(ctx, baseline); err != nil {
+		t.Fatalf("SavePlayStats baseline: %v", err)
+	}
+	replayStats := sampleSnapshot("user-5", "JP", "replay-with-stats")
+	replayStats.DriveImpact = 1.03
+	replayStats.ReceivedDriveImpact = 1.07
+	replayStats.ThrowTech = 0.11
+	replayStats.CornerTime = 2.95
+	if err := store.SavePlayStats(ctx, replayStats); err != nil {
 		t.Fatalf("SavePlayStats: %v", err)
 	}
 
@@ -873,6 +886,13 @@ func TestGetMatchesWithPlayStatsLeftJoin(t *testing.T) {
 	}
 	if byReplay["replay-with-stats"].Stats == nil {
 		t.Errorf("expected stats for replay-with-stats, got nil")
+	} else {
+		if got := byReplay["replay-with-stats"].Stats.DriveImpact; got < 2.99 || got > 3.01 {
+			t.Errorf("DriveImpact delta = %v, want about 3.00", got)
+		}
+		if got := byReplay["replay-with-stats"].Stats.ReceivedDriveImpact; got < 6.99 || got > 7.01 {
+			t.Errorf("ReceivedDriveImpact delta = %v, want about 7.00", got)
+		}
 	}
 	if byReplay["replay-no-stats"].Stats != nil {
 		t.Errorf("expected nil stats for replay-no-stats, got %+v", byReplay["replay-no-stats"].Stats)

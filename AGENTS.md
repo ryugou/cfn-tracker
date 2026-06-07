@@ -79,6 +79,8 @@ Important behavior:
 - `character` is stored for app filtering/context, but the raw `/play` stats are not character-specific.
 - A baseline snapshot is captured at tracking start if there is no recent snapshot.
 - Additional snapshots are captured on new matches. `match_replay_id` is set when available.
+- `play_stats_snapshots` is raw acquisition data. UI/detail tables must not derive per-match values from this table at render time.
+- When a replay-linked snapshot is saved, `SavePlayStats` computes per-match values from the previous snapshot and stores them in `match_play_stats`.
 - `corner_time` and `cornered_time` are REAL values after migration `000005`.
 - Automatic refresh:
   - Started from Wails `OnStartup` via `StartAutoDataRefresh`.
@@ -158,6 +160,33 @@ Indexes:
 - `idx_play_stats_user_char_at(user_id, character, snapshot_at)`
 - `idx_play_stats_match_replay_id(match_replay_id)`
 
+### match_play_stats
+
+Derived per-match SF6 play stats calculated at acquisition time.
+
+- Source: adjacent rows in `play_stats_snapshots`.
+- Created only when a snapshot has `match_replay_id` and there is a previous snapshot for the same user.
+- `GetMatchesWithPlayStats` reads this table, not raw `play_stats_snapshots`.
+- UI must display these stored values directly and must not recalculate snapshot deltas.
+- Current scale: `(current_average - previous_average) * 100`, matching Capcom's 100-match moving-average style data.
+
+Columns:
+
+- `id` INTEGER PRIMARY KEY AUTOINCREMENT
+- `user_id` TEXT NOT NULL
+- `match_replay_id` TEXT NOT NULL UNIQUE
+- `snapshot_id` INTEGER NOT NULL
+- `previous_snapshot_id` INTEGER
+- `computed_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+- `drive_impact`
+- `received_drive_impact`
+- `just_parry`
+- `throw_tech`
+- `corner_time`
+- `cornered_time`
+- `throw_count`
+- `received_punish_counter`
+
 ### benchmark_players
 
 Cached comparison-player data for the analysis/advice screens.
@@ -216,7 +245,7 @@ Match / play-stat automatic refresh:
 - Missing ranked matches are imported with `SF6Tracker.BackfillMatches`, deduped by replay ID.
 - Imported matches are saved to SQLite, text output, and the Vegapunk sync queue.
 - When at least one missing match is imported, the app fetches one current `/play` snapshot and attaches it to the newest imported replay ID.
-- Separate stale `/play` snapshots are still refreshed hourly for registered users when no fresh snapshot exists.
+- Separate stale `/play` snapshots are still refreshed hourly for registered users when no fresh snapshot exists; the first startup check waits 4 minutes so the 3-minute match import can run first.
 - Existing historical matches can be recovered from battlelog while they remain available, but exact historical `/play` per-match values cannot be reconstructed after the fact because Capcom returns only the current `/play` state.
 
 ### advice_runs
