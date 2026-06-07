@@ -366,8 +366,8 @@ func TestLatestPlayStatsFresh(t *testing.T) {
 }
 
 func TestIsPunkRecordSearchNoise(t *testing.T) {
-	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_candidate:1766731922:74", "adviceaction", "") {
-		t.Fatal("expected advice_candidate id to be recursive")
+	if isPunkRecordSearchNoise("sf6-advice:gen1:advice_candidate:1766731922:74", "adviceaction", "DI被弾削減 advice") {
+		t.Fatal("advice_candidate should remain searchable as prior advice")
 	}
 	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_evidence:1766731922:75:vegapunk:message", "evidence", "") {
 		t.Fatal("expected advice_evidence id to be recursive")
@@ -380,6 +380,30 @@ func TestIsPunkRecordSearchNoise(t *testing.T) {
 	}
 	if isPunkRecordSearchNoise("sf6-advice:gen1:metric-just_parry", "metric", "Perfect Parry / Just Parry") {
 		t.Fatal("metric id should not be recursive")
+	}
+}
+
+func TestPriorAdviceForPromptFromRunsKeepsPunkRecordCandidates(t *testing.T) {
+	got := priorAdviceForPromptFromRuns([]*model.AdviceRun{{
+		CreatedAt: "2026-06-01 10:00:00",
+		Candidates: []*model.AdviceCandidate{{
+			Mode:   model.AdviceModeDBOnly,
+			Theme:  "DB only should be skipped",
+			Action: "skip",
+		}, {
+			Mode:            model.AdviceModePunkRecordOpus46,
+			Theme:           "DI被弾削減",
+			Action:          "DI警戒ゾーンを決める",
+			SuccessCriteria: "DI被弾を1.2以下にする",
+			WatchMetrics:    "DI被弾, パニカン被弾",
+			Risks:           "守りすぎる",
+		}},
+	}}, 3)
+	if len(got) != 1 {
+		t.Fatalf("prior advice count = %d, want 1", len(got))
+	}
+	if got[0].Theme != "DI被弾削減" || got[0].Action != "DI警戒ゾーンを決める" {
+		t.Fatalf("unexpected prior advice: %#v", got[0])
 	}
 }
 

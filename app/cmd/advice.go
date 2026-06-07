@@ -49,6 +49,7 @@ type adviceContext struct {
 	Signals            []adviceSignalForPrompt        `json:"signals"`
 	BenchmarkCount     int                            `json:"benchmarkCount"`
 	CharacterKnowledge []adviceCharacterMoveForPrompt `json:"characterKnowledge,omitempty"`
+	PriorAdvice        []priorAdviceForPrompt         `json:"priorAdvice,omitempty"`
 }
 
 type adviceSignalForPrompt struct {
@@ -77,6 +78,16 @@ type adviceCharacterMoveForPrompt struct {
 	Attribute      string `json:"attribute,omitempty"`
 	Remarks        string `json:"remarks,omitempty"`
 	Description    string `json:"description,omitempty"`
+}
+
+type priorAdviceForPrompt struct {
+	CreatedAt       string `json:"createdAt"`
+	Mode            string `json:"mode"`
+	Theme           string `json:"theme"`
+	Action          string `json:"action"`
+	SuccessCriteria string `json:"successCriteria"`
+	WatchMetrics    string `json:"watchMetrics"`
+	Risks           string `json:"risks"`
 }
 
 type adviceSignal struct {
@@ -113,6 +124,9 @@ func (ch *CommandHandler) GenerateAdviceComparison(userId, character string) (*m
 	signals := adviceSignals(latest, history, averages)
 	adviceCtx := buildAdviceContext(userId, character, latest, signals, len(players))
 	adviceCtx.CharacterKnowledge = ch.characterKnowledgeForAdvice(ctx, character, signals)
+	if priorRuns, err := ch.sqlDb.GetAdviceRuns(ctx, userId, character, 3); err == nil {
+		adviceCtx.PriorAdvice = priorAdviceForPromptFromRuns(priorRuns, 3)
+	}
 	sonnetModel := adviceLLMModel(anthropicSonnetModelEnvKey, defaultAnthropicSonnetModel)
 	opusModel := adviceLLMModel(anthropicOpusModelEnvKey, defaultAnthropicOpusModel)
 	apiKeyErr := InitializeAdviceLLMConfig(ctx)
@@ -233,6 +247,36 @@ func buildAdviceContext(
 			HigherGood:  signal.higherGood,
 			Severity:    round2(signal.severity),
 		})
+	}
+	return out
+}
+
+func priorAdviceForPromptFromRuns(runs []*model.AdviceRun, limit int) []priorAdviceForPrompt {
+	if limit <= 0 {
+		limit = 3
+	}
+	out := make([]priorAdviceForPrompt, 0, limit)
+	for _, run := range runs {
+		if run == nil {
+			continue
+		}
+		for _, candidate := range run.Candidates {
+			if candidate == nil || candidate.Mode == model.AdviceModeDBOnly {
+				continue
+			}
+			out = append(out, priorAdviceForPrompt{
+				CreatedAt:       firstNonEmpty(candidate.CreatedAt, run.CreatedAt),
+				Mode:            string(candidate.Mode),
+				Theme:           candidate.Theme,
+				Action:          candidate.Action,
+				SuccessCriteria: candidate.SuccessCriteria,
+				WatchMetrics:    candidate.WatchMetrics,
+				Risks:           candidate.Risks,
+			})
+			if len(out) >= limit {
+				return out
+			}
+		}
 	}
 	return out
 }
@@ -669,7 +713,7 @@ func adviceLLMModel(envKey, fallback string) string {
 func adviceSystemPrompt(mode model.AdviceMode) string {
 	modeInstruction := "DB観測データだけを根拠にして、攻略知識を推測で広げすぎないでください。"
 	if usesPunkRecordEvidence(mode) {
-		modeInstruction = "DB観測データを主根拠にし、PunkRecord/GraphRAG evidenceを追加根拠として使ってください。矛盾する場合はDB観測データを優先してください。"
+		modeInstruction = "DB観測データを主根拠にし、PunkRecord/GraphRAG evidenceを追加根拠として使ってください。矛盾する場合はDB観測データを優先してください。priorAdviceまたはPunkRecord evidenceに過去施策がある場合は、rationaleまたはsummaryに「前回施策」「その後の変化」「今回判断への影響」を必ず含めてください。"
 	}
 	return strings.Join([]string{
 		"あなたはStreet Fighter 6の分析コーチです。",
@@ -1012,13 +1056,13 @@ func (ch *CommandHandler) searchVegapunkEvidence(ctx context.Context, character,
 	if protoImportPath == "" {
 		protoImportPath = filepath.Dir(protoPath)
 	}
-	query := fmt.Sprintf("SF6 %s %s %s", character, theme, summary)
+	query := fmt.Sprintf("SF6 %s %s %s 過去施策 前回アドバイス 監視指標 結果 副作用", character, theme, summary)
 	req := map[string]any{
 		"text":   query,
 		"mode":   "hybrid",
 		"schema": schema,
-		"top_k":  5,
-		"limit":  5,
+		"top_k":  8,
+		"limit":  8,
 	}
 	body, _ := json.Marshal(req)
 	args := []string{"-plaintext", "-import-path", protoImportPath, "-proto", filepath.Base(protoPath), "-d", string(body)}
@@ -1088,7 +1132,6 @@ func isPunkRecordSearchNoise(id, nodeType, text string) bool {
 	nodeType = strings.ToLower(strings.TrimSpace(nodeType))
 	text = strings.TrimSpace(text)
 	if strings.Contains(id, ":advice_evidence:") ||
-		strings.Contains(id, ":advice_candidate:") ||
 		strings.Contains(id, ":advice_run:") ||
 		strings.Contains(id, ":player:") {
 		return true
