@@ -10,7 +10,11 @@ import { Button } from '@/ui/button'
 import { Tooltip } from '@/ui/tooltip'
 import * as Page from '@/ui/page'
 import { type LocalizationKey } from '@/main/i18n'
-import { GetPlayStatsCharacters, GetLatestMatchForUserAndCharacter, GetUsers } from '@cmd/CommandHandler'
+import {
+  GetPlayStatsCharacters,
+  GetLatestMatchForUserAndCharacter,
+  GetUsers
+} from '@cmd/CommandHandler'
 import type { model } from '@model'
 import { rememberTrackingUser } from './preferences'
 
@@ -137,8 +141,10 @@ export function TrackingLiveUpdater() {
     character,
     opponentLeague,
     userName,
+    leagueRank,
     victory
   } = displayMatch
+  const currentRank = sf6RankLabel(leagueRank, lp)
 
   const accountOptions = React.useMemo(() => {
     if (!trackingUser || users.some(user => user.code === trackingUser.code)) return users
@@ -185,6 +191,7 @@ export function TrackingLiveUpdater() {
         <dl className='flex w-full items-center justify-between whitespace-nowrap'>
           <SmallStat text='CFN' value={userName || trackingUser?.displayName || userCode} />
           <div className='flex justify-between gap-8'>
+            {currentRank && <SmallStat text='Rank' value={currentRank} />}
             {lp != 0 && <SmallStat text='LP' value={`${lp == -1 ? t('placement') : lp}`} />}
             {mr != 0 && <SmallStat text='MR' value={`${mr == -1 ? t('placement') : mr}`} />}
           </div>
@@ -334,3 +341,42 @@ const SmallStat = ({ text, value }: StatProps) => (
     <dd className='font-bold'>{value}</dd>
   </div>
 )
+
+function sf6RankLabel(leagueRank: number, lp: number): string {
+  const fromLeagueRank = sf6RankFromLeagueRank(leagueRank)
+  return fromLeagueRank || sf6RankFromLP(lp)
+}
+
+function sf6RankFromLeagueRank(leagueRank: number): string {
+  if (leagueRank <= 0 || leagueRank >= 39) return ''
+  if (leagueRank >= 36) return 'Master'
+
+  const leagues = ['Rookie', 'Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond']
+  const leagueIndex = Math.floor((leagueRank - 1) / 5)
+  const league = leagues[leagueIndex]
+  if (!league) return ''
+
+  const stars = ((leagueRank - 1) % 5) + 1
+  return `${league} ${'★'.repeat(stars)}`
+}
+
+function sf6RankFromLP(lp: number): string {
+  if (lp === -1 || lp < 0) return ''
+  if (lp >= 25000) return 'Master'
+
+  const bands = [
+    { name: 'Diamond', min: 20000, max: 24999 },
+    { name: 'Platinum', min: 14000, max: 19999 },
+    { name: 'Gold', min: 9000, max: 13999 },
+    { name: 'Silver', min: 5000, max: 8999 },
+    { name: 'Bronze', min: 3000, max: 4999 },
+    { name: 'Iron', min: 1000, max: 2999 },
+    { name: 'Rookie', min: 0, max: 999 }
+  ]
+  const band = bands.find(({ min, max }) => lp >= min && lp <= max)
+  if (!band) return ''
+
+  const bandWidth = band.max - band.min + 1
+  const stars = Math.max(1, Math.min(5, Math.floor(((lp - band.min) * 5) / bandWidth) + 1))
+  return `${band.name} ${'★'.repeat(stars)}`
+}

@@ -332,6 +332,7 @@ export namespace model {
 	    replayId: string;
 	    character: string;
 	    lp: number;
+	    leagueRank: number;
 	    lpGain: number;
 	    mr: number;
 	    mrGain: number;

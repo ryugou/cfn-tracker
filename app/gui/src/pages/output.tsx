@@ -28,6 +28,7 @@ const defaultOptions: StatOptions = {
   winRate: true,
   winStreak: false,
   lp: false,
+  leagueRank: false,
   mr: true,
   lpGain: false,
   mrGain: true,
