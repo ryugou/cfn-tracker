@@ -560,13 +560,45 @@ func (ch *CommandHandler) generateAdviceWithLLM(
 			Title:  "LLM結果使用不可",
 			Text:   err.Error(),
 		})
+		ensureAdviceSummarySections(fallback, adviceCtx.Signals)
 		return fallback
 	}
 	candidate.Mode = mode
 	if len(candidate.Evidence) == 0 {
 		candidate.Evidence = fallback.Evidence
 	}
+	ensureAdviceSummarySections(candidate, adviceCtx.Signals)
 	return candidate
+}
+
+func ensureAdviceSummarySections(candidate *model.AdviceCandidate, signals []adviceSignalForPrompt) {
+	if candidate == nil {
+		return
+	}
+	if strings.Contains(candidate.Summary, "良くなった点") && strings.Contains(candidate.Summary, "改善すべき点") {
+		return
+	}
+	improved := "現時点では明確な改善はまだ少ない"
+	for _, signal := range signals {
+		if (signal.HigherGood && signal.Trend > 0) || (!signal.HigherGood && signal.Trend < 0) {
+			improved = fmt.Sprintf("%sが改善方向です（直近%d件の推移 %.2f）。", signal.Label, adviceInputWindow, signal.Trend)
+			break
+		}
+	}
+	top := firstSignalForSummary(signals)
+	needs := "次に優先する指標を絞って継続観察します。"
+	if top.Label != "" {
+		needs = fmt.Sprintf("%sは自分 %.2f / 比較対象 %.2f で、引き続き改善対象です。", top.Label, top.Self, top.Benchmark)
+	}
+	rest := strings.TrimSpace(candidate.Summary)
+	candidate.Summary = strings.TrimSpace(fmt.Sprintf("良くなった点: %s\n改善すべき点: %s\n%s", improved, needs, rest))
+}
+
+func firstSignalForSummary(signals []adviceSignalForPrompt) adviceSignalForPrompt {
+	if len(signals) == 0 {
+		return adviceSignalForPrompt{}
+	}
+	return signals[0]
 }
 
 func requestAdviceLLM(
@@ -725,6 +757,7 @@ func adviceSystemPrompt(mode model.AdviceMode) string {
 		"キャラ固有情報が足りない場合だけ、キャンセル可能技、小技、ガード継続、DI返し、ジャンプ脱出などの一般化した行動カテゴリで書いてください。",
 		"ジャストパリィとDI返しは別の行動です。ジャストパリィ値が低いことをDI返し不能やDI返し成功率ゼロの根拠にしないでください。",
 		"PunkRecord/GraphRAG evidenceは過去施策や関連知識の検索結果です。「GraphRAGが推奨した」とは書かず、「過去施策として記録されている」「過去施策と整合する」と表現してください。",
+		"summaryには必ず「良くなった点: ...」「改善すべき点: ...」の2点を含めてください。改善が見えない場合も「良くなった点: 現時点では明確な改善はまだ少ない」と明記してください。",
 		"短期間で言うことを変えすぎず、成功条件と副作用として監視する指標を必ず含めてください。",
 		modeInstruction,
 		"返答はJSONのみ。Markdownや説明文は不要です。",

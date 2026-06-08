@@ -448,6 +448,32 @@ func TestFilterPunkRecordEvidenceForDisplayDedupesAndDropsOffMetricAdvice(t *tes
 	}
 }
 
+func TestEnsureAdviceSummarySectionsAddsImprovedAndNeeds(t *testing.T) {
+	candidate := &model.AdviceCandidate{Summary: "既存要約"}
+	ensureAdviceSummarySections(candidate, []adviceSignalForPrompt{{
+		Label:      "パニカン被弾",
+		Self:       0.8,
+		Benchmark:  0.56,
+		Trend:      -0.1,
+		HigherGood: false,
+	}, {
+		Label:      "投げ",
+		Self:       1.7,
+		Benchmark:  2.68,
+		Trend:      0.7,
+		HigherGood: true,
+	}})
+	if !strings.Contains(candidate.Summary, "良くなった点") {
+		t.Fatalf("summary should include improvement section: %s", candidate.Summary)
+	}
+	if !strings.Contains(candidate.Summary, "改善すべき点") {
+		t.Fatalf("summary should include needs section: %s", candidate.Summary)
+	}
+	if !strings.Contains(candidate.Summary, "パニカン被弾が改善方向") {
+		t.Fatalf("summary should mention improved metric: %s", candidate.Summary)
+	}
+}
+
 func TestSummarizePunkRecordEvidenceTrimsRawAdvicePrefixAndLength(t *testing.T) {
 	text := "punk_record_opus_4_6 advice: " + strings.Repeat("パニカン被弾の継続削減 ", 50)
 	got := summarizePunkRecordEvidence(text)
