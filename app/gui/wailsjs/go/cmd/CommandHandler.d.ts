@@ -48,6 +48,8 @@ export function OpenResultsDirectory():Promise<void>;
 
 export function RefreshBenchmarkPlayers(arg1:string,arg2:string):Promise<Array<model.BenchmarkPlayer>>;
 
+export function RefreshMissingMatchesNow():Promise<number>;
+
 export function SaveAdviceFeedback(arg1:number,arg2:string,arg3:number,arg4:number,arg5:number,arg6:number,arg7:string):Promise<void>;
 
 export function SaveLocale(arg1:string):Promise<void>;

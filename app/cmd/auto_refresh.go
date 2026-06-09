@@ -11,13 +11,11 @@ import (
 )
 
 const (
-	matchRefreshInterval         = 3 * time.Minute
-	matchRefreshInitialDelay     = 3 * time.Minute
-	matchRefreshUserDelay        = 3 * time.Minute
+	sf6DataRefreshInterval       = 3 * time.Minute
+	sf6DataRefreshInitialDelay   = 0
+	sf6DataRefreshUserDelay      = 3 * time.Minute
+	autoRefreshUserTimeout       = 2 * time.Minute
 	playStatsRefreshAge          = time.Hour
-	playStatsRefreshInterval     = time.Hour
-	playStatsRefreshInitialDelay = 4 * time.Minute
-	playStatsRefreshUserDelay    = 30 * time.Second
 	benchmarkRefreshAge          = 24 * time.Hour
 	benchmarkRefreshInterval     = time.Hour
 	benchmarkRefreshInitialDelay = 2 * time.Minute
@@ -28,22 +26,21 @@ func StartAutoDataRefresh(ctx context.Context, ch *CommandHandler) {
 	if ch == nil || ch.sqlDb == nil {
 		return
 	}
-	go ch.runMatchRefreshLoop(ctx)
-	go ch.runPlayStatsRefreshLoop(ctx)
+	go ch.runSF6DataRefreshLoop(ctx)
 	go ch.runBenchmarkRefreshLoop(ctx)
 }
 
-func (ch *CommandHandler) runMatchRefreshLoop(ctx context.Context) {
-	if !sleepWithContext(ctx, matchRefreshInitialDelay) {
+func (ch *CommandHandler) runSF6DataRefreshLoop(ctx context.Context) {
+	if !sleepWithContext(ctx, sf6DataRefreshInitialDelay) {
 		return
 	}
-	ch.refreshMissingMatches(ctx)
-	ticker := time.NewTicker(matchRefreshInterval)
+	ch.refreshSF6Data(ctx)
+	ticker := time.NewTicker(sf6DataRefreshInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			ch.refreshMissingMatches(ctx)
+			ch.refreshSF6Data(ctx)
 		case <-ctx.Done():
 			return
 		}
@@ -67,90 +64,104 @@ func (ch *CommandHandler) runBenchmarkRefreshLoop(ctx context.Context) {
 	}
 }
 
-func (ch *CommandHandler) runPlayStatsRefreshLoop(ctx context.Context) {
-	if !sleepWithContext(ctx, playStatsRefreshInitialDelay) {
-		return
+func (ch *CommandHandler) refreshSF6Data(ctx context.Context) {
+	result, err := ch.refreshSF6DataForAllUsers(ctx)
+	if err != nil {
+		slog.Warn("auto sf6 data refresh failed", slog.Any("error", err))
 	}
-	ch.refreshStalePlayStats(ctx)
-	ticker := time.NewTicker(playStatsRefreshInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			ch.refreshStalePlayStats(ctx)
-		case <-ctx.Done():
-			return
-		}
+	if result.matches > 0 || result.playStats > 0 {
+		slog.Info("auto sf6 data refreshed", slog.Int("matches", result.matches), slog.Int("play_stats", result.playStats))
 	}
 }
 
-func (ch *CommandHandler) refreshStalePlayStats(ctx context.Context) {
-	if ch.cfnClient == nil {
-		return
-	}
-	users, err := ch.sqlDb.GetUsers(ctx)
-	if err != nil {
-		slog.Warn("auto play stats user lookup failed", slog.Any("error", err))
-		return
-	}
-	for i, user := range users {
-		if user == nil || user.Code == "" || ctx.Err() != nil {
-			continue
-		}
-		latest, err := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, user.Code)
-		if err != nil {
-			slog.Warn("auto play stats latest lookup failed", slog.String("user_id", user.Code), slog.Any("error", err))
-			continue
-		}
-		if latestPlayStatsFresh(latest, time.Now(), playStatsRefreshAge) {
-			continue
-		}
-		pp, err := ch.cfnClient.GetPlayStats(ctx, user.Code)
-		if err != nil {
-			slog.Warn("auto play stats refresh failed", slog.String("user_id", user.Code), slog.Any("error", err))
-			continue
-		}
-		snap := buildSnapshot(user.Code, &sf6.PlayStatsResult{
-			Character: pp.FighterBannerInfo.FavoriteCharacterName,
-			Stats:     &pp.Play.BattleStats,
-			BaseInfo:  &pp.Play.BaseInfo,
-		}, "")
-		if err := ch.sqlDb.SavePlayStats(ctx, snap); err != nil {
-			slog.Warn("auto play stats save failed", slog.String("user_id", user.Code), slog.Any("error", err))
-			continue
-		}
-		go syncLatestPlayStatsToVegapunkDB(context.Background(), ch.sqlDb, user.Code)
-		slog.Info("auto play stats refreshed", slog.String("user_id", user.Code), slog.String("character", snap.Character))
-		if i < len(users)-1 && !sleepWithContext(ctx, playStatsRefreshUserDelay) {
-			return
-		}
-	}
+type sf6DataRefreshResult struct {
+	matches   int
+	playStats int
 }
 
-func (ch *CommandHandler) refreshMissingMatches(ctx context.Context) {
+func (ch *CommandHandler) RefreshMissingMatchesNow() (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	result, err := ch.refreshSF6DataForAllUsers(ctx)
+	if err != nil {
+		return result.matches, model.WrapError(model.ErrGetMatches, err)
+	}
+	return result.matches, nil
+}
+
+func (ch *CommandHandler) refreshSF6DataForAllUsers(ctx context.Context) (sf6DataRefreshResult, error) {
 	if ch.cfnClient == nil {
-		return
+		return sf6DataRefreshResult{}, nil
 	}
 	users, err := ch.sqlDb.GetUsers(ctx)
 	if err != nil {
-		slog.Warn("auto match user lookup failed", slog.Any("error", err))
-		return
+		return sf6DataRefreshResult{}, fmt.Errorf("auto sf6 data user lookup: %w", err)
 	}
 	sf6Tracker := sf6.NewSF6Tracker(ch.cfnClient)
+	var result sf6DataRefreshResult
+	var firstErr error
 	for i, user := range users {
 		if user == nil || user.Code == "" || ctx.Err() != nil {
 			continue
 		}
-		imported, err := ch.refreshMissingMatchesForUser(ctx, sf6Tracker, user.Code)
+		userCtx, cancel := context.WithTimeout(ctx, autoRefreshUserTimeout)
+		userResult, err := ch.refreshSF6DataForUser(userCtx, sf6Tracker, user.Code)
+		cancel()
 		if err != nil {
-			slog.Warn("auto match refresh failed", slog.String("user_id", user.Code), slog.Any("error", err))
-		} else if imported > 0 {
-			slog.Info("auto matches refreshed", slog.String("user_id", user.Code), slog.Int("count", imported))
+			slog.Warn("auto sf6 data refresh failed", slog.String("user_id", user.Code), slog.Any("error", err))
+			if firstErr == nil {
+				firstErr = fmt.Errorf("user %s: %w", user.Code, err)
+			}
+		} else {
+			result.matches += userResult.matches
+			result.playStats += userResult.playStats
 		}
-		if i < len(users)-1 && !sleepWithContext(ctx, matchRefreshUserDelay) {
-			return
+		if i < len(users)-1 && !sleepWithContext(ctx, sf6DataRefreshUserDelay) {
+			return result, ctx.Err()
 		}
 	}
+	return result, firstErr
+}
+
+func (ch *CommandHandler) refreshSF6DataForUser(ctx context.Context, sf6Tracker *sf6.SF6Tracker, userId string) (sf6DataRefreshResult, error) {
+	imported, err := ch.refreshMissingMatchesForUser(ctx, sf6Tracker, userId)
+	if err != nil {
+		return sf6DataRefreshResult{}, err
+	}
+
+	refreshedStats, err := ch.refreshStalePlayStatsForUser(ctx, userId)
+	if err != nil {
+		return sf6DataRefreshResult{matches: imported}, err
+	}
+	result := sf6DataRefreshResult{matches: imported}
+	if refreshedStats {
+		result.playStats = 1
+	}
+	return result, nil
+}
+
+func (ch *CommandHandler) refreshStalePlayStatsForUser(ctx context.Context, userId string) (bool, error) {
+	latest, err := ch.sqlDb.GetLatestPlayStatsSnapshot(ctx, userId)
+	if err != nil {
+		return false, fmt.Errorf("latest play stats lookup: %w", err)
+	}
+	if latestPlayStatsFresh(latest, time.Now(), playStatsRefreshAge) {
+		return false, nil
+	}
+	pp, err := ch.cfnClient.GetPlayStats(ctx, userId)
+	if err != nil {
+		return false, fmt.Errorf("get play stats: %w", err)
+	}
+	snap := buildSnapshot(userId, &sf6.PlayStatsResult{
+		Character: pp.FighterBannerInfo.FavoriteCharacterName,
+		Stats:     &pp.Play.BattleStats,
+		BaseInfo:  &pp.Play.BaseInfo,
+	}, "")
+	if err := ch.sqlDb.SavePlayStats(ctx, snap); err != nil {
+		return false, fmt.Errorf("save play stats: %w", err)
+	}
+	go syncLatestPlayStatsToVegapunkDB(context.Background(), ch.sqlDb, userId)
+	return true, nil
 }
 
 func (ch *CommandHandler) refreshMissingMatchesForUser(ctx context.Context, sf6Tracker *sf6.SF6Tracker, userId string) (int, error) {
@@ -227,7 +238,9 @@ func (ch *CommandHandler) refreshMissingMatchesForUser(ctx context.Context, sf6T
 }
 
 func (ch *CommandHandler) refreshPlayStatsForReplay(ctx context.Context, userId, replayId string) error {
-	pp, err := ch.cfnClient.GetPlayStats(ctx, userId)
+	statsCtx, cancel := context.WithTimeout(ctx, autoRefreshUserTimeout)
+	pp, err := ch.cfnClient.GetPlayStats(statsCtx, userId)
+	cancel()
 	if err != nil {
 		return fmt.Errorf("get play stats: %w", err)
 	}
