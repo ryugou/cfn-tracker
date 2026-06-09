@@ -1,0 +1,2 @@
+-- Data backfill only. Do not delete match_play_stats rows on rollback because
+-- they may have been created by normal runtime ingestion after this migration.
