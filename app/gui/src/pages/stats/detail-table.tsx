@@ -1,48 +1,26 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { GetMatchesWithPlayStats, GetPlayStatsHistory } from '@cmd/CommandHandler'
+import { GetMatchesWithPlayStats } from '@cmd/CommandHandler'
 import { model } from '@model'
 
 type Props = {
   userId: string
-  // Empty string = "all characters". Snapshots are user-wide, so the
-  // character only narrows which matches we list (and therefore which
-  // deltas we surface) — it never filters the snapshot stream itself.
+  // Empty string = "all characters". Per-match stats are already computed
+  // and persisted by the acquisition path; this component only displays them.
   character: string
 }
 
-type Snapshot = model.PlayStatsSnapshot
-
-// Capcom returns battle_stats as per-match averages over a sliding window of
-// the last 100 ranked matches. The difference between two adjacent snapshots
-// reflects how that average shifted across one match. Multiplying the delta
-// by DELTA_SCALE (100) approximates the contribution attributable to that
-// single match, since the moving average is normalized by the window size.
-const DELTA_SCALE = 100
-
-function formatDelta(value: number | undefined): string {
+function formatStat(value: number | undefined): string {
   if (value === undefined) return '—'
-  // Round to two decimals so table values stay readable without exposing
-  // long floating point tails from derived snapshot deltas.
-  const scaled = value * DELTA_SCALE
-  if (Math.abs(scaled) < 0.005) return '0.00'
-  return scaled.toFixed(2)
-}
-
-function deltaField(curr: Snapshot, prev: Snapshot | undefined, pick: (s: Snapshot) => number) {
-  if (prev === undefined) return undefined
-  return pick(curr) - pick(prev)
+  if (Math.abs(value) < 0.005) return '0.00'
+  return value.toFixed(2)
 }
 
 export function DetailTable({ userId, character }: Props) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
   const [rows, setRows] = React.useState<model.MatchWithStats[]>([])
-  // User-wide snapshot history (ASC). Used to look up the snapshot that
-  // immediately precedes each row's match snapshot so we can compute the
-  // delta attributable to that match.
-  const [snapshots, setSnapshots] = React.useState<Snapshot[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -50,22 +28,14 @@ export function DetailTable({ userId, character }: Props) {
     if (!open) return
     let active = true
     setRows([])
-    setSnapshots([])
     setLoading(true)
-    Promise.all([
-      GetMatchesWithPlayStats(userId, character, 50, 0),
-      // Empty character: backend ignores it (snapshots are user-wide).
-      // Pull the full history so prior-snapshot lookups don't miss when a
-      // match's preceding snapshot falls outside any per-character slice.
-      GetPlayStatsHistory(userId, '', '', '', 0)
-    ])
-      .then(([matchRows, history]) => {
+    GetMatchesWithPlayStats(userId, character, 50, 0)
+      .then(matchRows => {
         // Drop late responses for a stale (userId, character) pair so a
         // delayed previous request cannot clobber the current selection.
         if (!active) return
         setError(null)
         setRows(matchRows ?? [])
-        setSnapshots(history ?? [])
       })
       .catch(e => {
         if (active) setError(String(e))
@@ -81,17 +51,6 @@ export function DetailTable({ userId, character }: Props) {
       setLoading(false)
     }
   }, [open, userId, character])
-
-  // Index snapshots by id once per render so per-row lookups are O(1).
-  // `snapshots` is sorted ASC by snapshot_at, so the predecessor of any
-  // snapshot at index i is at index i-1 (or undefined for the very first).
-  const prevById = React.useMemo(() => {
-    const m = new Map<number, Snapshot>()
-    for (let i = 1; i < snapshots.length; i++) {
-      m.set(snapshots[i].id, snapshots[i - 1])
-    }
-    return m
-  }, [snapshots])
 
   return (
     <div className='mt-6'>
@@ -126,12 +85,6 @@ export function DetailTable({ userId, character }: Props) {
             <tbody>
               {rows.map((r, i) => {
                 const curr = r.stats
-                const prev = curr ? prevById.get(curr.id) : undefined
-                const di = curr && deltaField(curr, prev, s => s.driveImpact)
-                const rdi = curr && deltaField(curr, prev, s => s.receivedDriveImpact)
-                const jp = curr && deltaField(curr, prev, s => s.justParry)
-                const tt = curr && deltaField(curr, prev, s => s.throwTech)
-                const ct = curr && deltaField(curr, prev, s => s.cornerTime)
                 return (
                   <tr key={`${r.match.replayId}-${i}`} className='border-t border-white/10'>
                     <td className='p-1'>{r.match.date}</td>
@@ -140,11 +93,11 @@ export function DetailTable({ userId, character }: Props) {
                     <td className='p-1'>{r.match.opponent ?? '—'}</td>
                     <td className='p-1'>{r.match.victory ? 'W' : 'L'}</td>
                     <td className='p-1 text-right'>{r.match.lpGain ?? '—'}</td>
-                    <td className='p-1 text-right'>{formatDelta(di ?? undefined)}</td>
-                    <td className='p-1 text-right'>{formatDelta(rdi ?? undefined)}</td>
-                    <td className='p-1 text-right'>{formatDelta(jp ?? undefined)}</td>
-                    <td className='p-1 text-right'>{formatDelta(tt ?? undefined)}</td>
-                    <td className='p-1 text-right'>{formatDelta(ct ?? undefined)}</td>
+                    <td className='p-1 text-right'>{formatStat(curr?.driveImpact)}</td>
+                    <td className='p-1 text-right'>{formatStat(curr?.receivedDriveImpact)}</td>
+                    <td className='p-1 text-right'>{formatStat(curr?.justParry)}</td>
+                    <td className='p-1 text-right'>{formatStat(curr?.throwTech)}</td>
+                    <td className='p-1 text-right'>{formatStat(curr?.cornerTime)}</td>
                   </tr>
                 )
               })}

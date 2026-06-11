@@ -151,8 +151,8 @@ export namespace model {
 	    players: BenchmarkPlayer[];
 	    rankAverages: BenchmarkRankAverage[];
 	}
-	
-	
+
+
 	export interface FGCTrackerError {
 	    localizationKey: ErrorLocalizationKey;
 	    message: string;
@@ -332,6 +332,7 @@ export namespace model {
 	    replayId: string;
 	    character: string;
 	    lp: number;
+	    leagueRank: number;
 	    lpGain: number;
 	    mr: number;
 	    mrGain: number;
@@ -348,11 +349,56 @@ export namespace model {
 	    losses: number;
 	    winRate: number;
 	}
+	export interface MatchPlayStats {
+	    id: number;
+	    userId: string;
+	    matchReplayId: string;
+	    snapshotId: number;
+	    previousSnapshotId: number;
+	    computedAt: string;
+	    driveImpact: number;
+	    receivedDriveImpact: number;
+	    justParry: number;
+	    throwTech: number;
+	    cornerTime: number;
+	    corneredTime: number;
+	    throwCount: number;
+	    receivedPunishCounter: number;
+	}
 	export interface MatchWithStats {
 	    match: Match;
-	    stats?: PlayStatsSnapshot;
+	    stats?: MatchPlayStats;
 	}
-	
+
+	export interface SF6CharacterMove {
+	    id: number;
+	    character: string;
+	    locale: string;
+	    source: string;
+	    category: string;
+	    name: string;
+	    command: string;
+	    description: string;
+	    startup: string;
+	    active: string;
+	    recovery: string;
+	    hitAdvantage: string;
+	    blockAdvantage: string;
+	    cancel: string;
+	    damage: string;
+	    comboScaling: string;
+	    driveGaugeGainHit: string;
+	    driveGaugeLossBlock: string;
+	    driveGaugeLossPunish: string;
+	    saGaugeGain: string;
+	    attribute: string;
+	    remarks: string;
+	    rawText: string;
+	    sourceUrl: string;
+	    fetchedAt: string;
+	    createdAt: string;
+	    updatedAt: string;
+	}
 	export interface Session {
 	    id: number;
 	    userId: string;
@@ -392,7 +438,7 @@ export namespace model {
 }
 
 export namespace sql {
-	
+
 	export interface NullString {
 	    String: string;
 	    Valid: boolean;

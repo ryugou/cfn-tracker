@@ -20,9 +20,11 @@ Keep it updated when DB schema, data collection, or advice/PunkRecord behavior c
   - `app/pkg/model/play_stats.go`
   - `app/pkg/model/benchmark.go`
   - `app/pkg/model/advice.go`
+  - `app/pkg/model/sf6_character_data.go`
   - `app/pkg/storage/sql/play_stats.go`
   - `app/pkg/storage/sql/benchmark.go`
   - `app/pkg/storage/sql/advice.go`
+  - `app/pkg/storage/sql/sf6_character_data.go`
 
 ## DB Tables
 
@@ -77,7 +79,14 @@ Important behavior:
 - `character` is stored for app filtering/context, but the raw `/play` stats are not character-specific.
 - A baseline snapshot is captured at tracking start if there is no recent snapshot.
 - Additional snapshots are captured on new matches. `match_replay_id` is set when available.
+- `play_stats_snapshots` is raw acquisition data. UI/detail tables must not derive per-match values from this table at render time.
+- When a replay-linked snapshot is saved, `SavePlayStats` computes per-match values from the previous snapshot and stores them in `match_play_stats`.
 - `corner_time` and `cornered_time` are REAL values after migration `000005`.
+- Automatic refresh:
+  - Started from Wails `OnStartup` via `StartAutoDataRefresh`.
+  - For each registered user, fetches `/play` and saves a snapshot when the latest local snapshot is missing or older than 1 hour.
+  - Waits 1 minute after app startup before the first play-stats check.
+  - Waits 30 seconds between registered users to reduce authenticated site load.
 
 Identity/time columns:
 
@@ -151,6 +160,33 @@ Indexes:
 - `idx_play_stats_user_char_at(user_id, character, snapshot_at)`
 - `idx_play_stats_match_replay_id(match_replay_id)`
 
+### match_play_stats
+
+Derived per-match SF6 play stats calculated at acquisition time.
+
+- Source: adjacent rows in `play_stats_snapshots`.
+- Created only when a snapshot has `match_replay_id` and there is a previous snapshot for the same user.
+- `GetMatchesWithPlayStats` reads this table, not raw `play_stats_snapshots`.
+- UI must display these stored values directly and must not recalculate snapshot deltas.
+- Current scale: `(current_average - previous_average) * 100`, matching Capcom's 100-match moving-average style data.
+
+Columns:
+
+- `id` INTEGER PRIMARY KEY AUTOINCREMENT
+- `user_id` TEXT NOT NULL
+- `match_replay_id` TEXT NOT NULL UNIQUE
+- `snapshot_id` INTEGER NOT NULL
+- `previous_snapshot_id` INTEGER
+- `computed_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+- `drive_impact`
+- `received_drive_impact`
+- `just_parry`
+- `throw_tech`
+- `corner_time`
+- `cornered_time`
+- `throw_count`
+- `received_punish_counter`
+
 ### benchmark_players
 
 Cached comparison-player data for the analysis/advice screens.
@@ -195,6 +231,22 @@ Benchmark collection spec:
 - Benchmark data is cached indefinitely for normal use.
 - Refresh resets/replaces the cache for the current source user and character.
 - Rate limits matter because this uses the authenticated site data path. Avoid tight loops and unnecessary refreshes.
+- Automatic refresh:
+  - Started from Wails `OnStartup` via `StartAutoDataRefresh`.
+  - Targets registered users and characters that already exist in tracked `matches`.
+  - Refreshes only when the user/character benchmark cache is missing or older than 24 hours.
+  - Waits 2 minutes after app startup before the first benchmark check.
+  - Waits 2 minutes between stale benchmark jobs to reduce authenticated site load.
+
+Match / play-stat automatic refresh:
+
+- Started from Wails `OnStartup` via `StartAutoDataRefresh`.
+- Registered CFN users are scanned every 3 minutes through the authenticated SF6 battlelog path.
+- Missing ranked matches are imported with `SF6Tracker.BackfillMatches`, deduped by replay ID.
+- Imported matches are saved to SQLite, text output, and the Vegapunk sync queue.
+- When at least one missing match is imported, the app fetches one current `/play` snapshot and attaches it to the newest imported replay ID.
+- Separate stale `/play` snapshots are still refreshed hourly for registered users when no fresh snapshot exists; the first startup check waits 4 minutes so the 3-minute match import can run first.
+- Existing historical matches can be recovered from battlelog while they remain available, but exact historical `/play` per-match values cannot be reconstructed after the fact because Capcom returns only the current `/play` state.
 
 ### advice_runs
 
@@ -267,6 +319,66 @@ Behavior:
 - Failure keeps the row, increments `attempts`, records `last_error`, and sets `next_attempt_at` using exponential backoff.
 - The app should not treat a saved local DB row as synced to PunkRecord unless the corresponding queue row has `processed_at` set.
 
+### sf6_character_moves
+
+Official SF6 character movelist and frame-data cache. Data is fetched from the public Street Fighter 6 character pages, not from the authenticated CFN/Buckler data path.
+
+URL pattern:
+
+- Movelist: `https://www.streetfighter.com/6/{locale}/character/{character}/movelist`
+- Frame data: `https://www.streetfighter.com/6/{locale}/character/{character}/frame`
+- Example: `https://www.streetfighter.com/6/ja-jp/character/ingrid/frame`
+
+Columns:
+
+- `id` INTEGER PRIMARY KEY AUTOINCREMENT
+- `character` TEXT NOT NULL
+- `locale` TEXT NOT NULL
+- `source` TEXT NOT NULL: `movelist` or `frame`
+- `category` TEXT NOT NULL DEFAULT ''
+- `name` TEXT NOT NULL
+- `command` TEXT NOT NULL DEFAULT ''
+- `description` TEXT NOT NULL DEFAULT ''
+- `startup` TEXT NOT NULL DEFAULT ''
+- `active` TEXT NOT NULL DEFAULT ''
+- `recovery` TEXT NOT NULL DEFAULT ''
+- `hit_advantage` TEXT NOT NULL DEFAULT ''
+- `block_advantage` TEXT NOT NULL DEFAULT ''
+- `cancel` TEXT NOT NULL DEFAULT ''
+- `damage` TEXT NOT NULL DEFAULT ''
+- `combo_scaling` TEXT NOT NULL DEFAULT ''
+- `drive_gauge_gain_hit` TEXT NOT NULL DEFAULT ''
+- `drive_gauge_loss_block` TEXT NOT NULL DEFAULT ''
+- `drive_gauge_loss_punish` TEXT NOT NULL DEFAULT ''
+- `sa_gauge_gain` TEXT NOT NULL DEFAULT ''
+- `attribute` TEXT NOT NULL DEFAULT ''
+- `remarks` TEXT NOT NULL DEFAULT ''
+- `raw_text` TEXT NOT NULL DEFAULT ''
+- `source_url` TEXT NOT NULL DEFAULT ''
+- `fetched_at` TEXT NOT NULL DEFAULT ''
+- `created_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+- `updated_at` TEXT NOT NULL DEFAULT `DATETIME('NOW')`
+
+Constraints/indexes:
+
+- Unique: `(character, locale, source, category, name, command, startup, active)`
+- Index: `idx_sf6_character_moves_character_locale(character, locale)`
+- Index: `idx_sf6_character_moves_lookup(character, locale, source, category, name)`
+
+Collection spec:
+
+- Parser lives in `app/pkg/tracker/sf6/official`.
+- Manual single-character sync: `go run ./tools/sync-sf6-character-data -character ingrid -locale ja-jp`.
+- Manual all-character sync: `go run ./tools/sync-sf6-character-data -all -locale ja-jp -delay 500ms`.
+- App command: `SyncSF6CharacterData(character, locale)`.
+- The advice prompt receives a relevant subset as `characterKnowledge`.
+- Character-specific move names, commands, frame values, combos, or sequence names may be used only when grounded by `characterKnowledge` or PunkRecord evidence. Missing character-specific details must not be guessed.
+- Official character data does not auto-refresh on startup because this data rarely changes. If Capcom updates move/frame data, run the manual all-character sync.
+- Official character-page slugs differ from some CFN/internal names:
+  - Akuma: `gouki_akuma`
+  - M. Bison: `vega_mbison`
+  - E. Honda: `ehonda`
+
 ## Advice Generation
 
 Command entry point:
@@ -278,11 +390,13 @@ Inputs:
 - Latest `play_stats_snapshots` row.
 - Recent play-stat snapshots, currently treated as a 30-snapshot window.
 - Benchmark averages from `benchmark_players`.
+- Relevant official character movelist/frame rows from `sf6_character_moves`, passed as `characterKnowledge`.
 - PunkRecord/vegapunk evidence for PunkRecord modes.
 
 Source-of-truth boundary:
 
 - Exact metric values, deltas, benchmark averages, match counts, LP/MR values, and win/loss records must come from SQLite/RDB queries.
+- Exact character move names, commands, frame values, cancel properties, attributes, and official notes must come from `sf6_character_moves` or PunkRecord evidence.
 - PunkRecord/vegapunk is a narrative memory layer. It stores SF6 knowledge, advice actions, qualitative observation summaries, side-effect hypotheses, feedback, and similar past cases.
 - Do not use vegapunk as a numeric fact store or an effect-measurement engine.
 - GraphRAG evidence can support plausible explanations and analogies, but it must not be presented as causal proof.

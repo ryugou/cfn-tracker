@@ -98,28 +98,25 @@ export function AdvicePage() {
       .finally(() => setLoading(false))
   }, [selectedUser, selectedChar])
 
-  const confirmDeleteRun = React.useCallback(
-    () => {
-      const target = deleteTarget
-      if (!target) return
-      setDeletingRunId(target.id)
-      DeleteAdviceRun(target.id)
-        .then(() => {
-          setRuns(current => {
-            const next = current.filter(item => item.id !== target.id)
-            if (run?.id === target.id) {
-              setRun(next[0] ?? null)
-            }
-            return next
-          })
-          setDeleteTarget(null)
-          setError(null)
+  const confirmDeleteRun = React.useCallback(() => {
+    const target = deleteTarget
+    if (!target) return
+    setDeletingRunId(target.id)
+    DeleteAdviceRun(target.id)
+      .then(() => {
+        setRuns(current => {
+          const next = current.filter(item => item.id !== target.id)
+          if (run?.id === target.id) {
+            setRun(next[0] ?? null)
+          }
+          return next
         })
-        .catch(e => setError(String(e)))
-        .finally(() => setDeletingRunId(null))
-    },
-    [deleteTarget, run?.id]
-  )
+        setDeleteTarget(null)
+        setError(null)
+      })
+      .catch(e => setError(String(e)))
+      .finally(() => setDeletingRunId(null))
+  }, [deleteTarget, run?.id])
 
   return (
     <Page.Root>
@@ -379,7 +376,7 @@ function AdviceCard({ runId, candidate }: { runId: number; candidate: model.Advi
           {(candidate.evidence ?? []).map((ev, index) => (
             <div key={index} className='rounded bg-black/20 p-2 text-sm'>
               <div className='mb-1 flex items-center gap-2 text-xs text-white/45'>
-                <span>{ev.source}</span>
+                <span>{evidenceSourceLabel(ev.source)}</span>
                 <span>{ev.title}</span>
                 {ev.score ? <span>{ev.score.toFixed(2)}</span> : null}
               </div>
@@ -406,6 +403,11 @@ function AdviceCard({ runId, candidate }: { runId: number; candidate: model.Advi
       )}
     </section>
   )
+}
+
+function evidenceSourceLabel(source: string) {
+  if (source === 'vegapunk') return '関連する過去施策'
+  return source
 }
 
 function Block({ title, text }: { title: string; text: string }) {

@@ -76,6 +76,7 @@ func (t *SF6Tracker) Poll(ctx context.Context, session *model.Session) (*model.M
 	return &model.Match{
 		Character:         bl.GetCharacter(),
 		LP:                bl.GetLP(),
+		LeagueRank:        bl.GetLeagueRank(),
 		MR:                bl.GetMR(),
 		Opponent:          opponent.Player.FighterID,
 		OpponentCharacter: opponent.CharacterName,
@@ -226,6 +227,7 @@ func replayToMatch(bl *cfn.BattleLog, r cfn.Replay, session *model.Session) mode
 		ReplayID:          r.ReplayID,
 		Character:         me.CharacterName,
 		LP:                me.LeaguePoint,
+		LeagueRank:        me.LeagueRank,
 		MR:                me.MasterRating,
 		Opponent:          opp.Player.FighterID,
 		OpponentCharacter: opp.CharacterName,

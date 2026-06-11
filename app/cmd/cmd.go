@@ -22,6 +22,7 @@ import (
 type CommandHandler struct {
 	sqlDb        *sql.Storage
 	cfgDb        *cfgDb.Storage
+	txtDb        *txt.Storage
 	cfnClient    cfn.CFNClient
 	cfg          *config.BuildConfig
 	EventEmitter EventEmitFn
@@ -31,6 +32,7 @@ func NewCommandHandler(sqlDb *sql.Storage, cfgDb *cfgDb.Storage, txtDb *txt.Stor
 	return &CommandHandler{
 		sqlDb:     sqlDb,
 		cfgDb:     cfgDb,
+		txtDb:     txtDb,
 		cfnClient: cfnClient,
 		cfg:       cfg,
 	}

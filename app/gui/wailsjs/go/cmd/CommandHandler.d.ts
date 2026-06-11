@@ -30,6 +30,8 @@ export function GetPlayStatsCharacters(arg1:string):Promise<Array<string>>;
 
 export function GetPlayStatsHistory(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<Array<model.PlayStatsSnapshot>>;
 
+export function GetSF6CharacterMoves(arg1:string,arg2:string,arg3:number):Promise<Array<model.SF6CharacterMove>>;
+
 export function GetSessions(arg1:string,arg2:string,arg3:number,arg4:number):Promise<Array<model.Session>>;
 
 export function GetSessionsStatistics(arg1:string):Promise<model.SessionsStatistics>;
@@ -46,6 +48,8 @@ export function OpenResultsDirectory():Promise<void>;
 
 export function RefreshBenchmarkPlayers(arg1:string,arg2:string):Promise<Array<model.BenchmarkPlayer>>;
 
+export function RefreshMissingMatchesNow():Promise<number>;
+
 export function SaveAdviceFeedback(arg1:number,arg2:string,arg3:number,arg4:number,arg5:number,arg6:number,arg7:string):Promise<void>;
 
 export function SaveLocale(arg1:string):Promise<void>;
@@ -53,5 +57,7 @@ export function SaveLocale(arg1:string):Promise<void>;
 export function SaveSidebarMinimized(arg1:boolean):Promise<void>;
 
 export function SaveTheme(arg1:model.ThemeName):Promise<void>;
+
+export function SyncSF6CharacterData(arg1:string,arg2:string):Promise<Array<model.SF6CharacterMove>>;
 
 export function SyncVegapunkGrowthData(arg1:string,arg2:string):Promise<void>;

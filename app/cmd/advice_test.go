@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/williamsjokvist/cfn-tracker/pkg/model"
 )
@@ -278,9 +279,95 @@ func TestRequestAdviceLLMReportsTruncatedResponse(t *testing.T) {
 	}
 }
 
+func TestAdviceSystemPromptGroundsCharacterSpecificClaims(t *testing.T) {
+	prompt := adviceSystemPrompt(model.AdviceModePunkRecordOpus46)
+	for _, expected := range []string{
+		"characterKnowledgeまたはPunkRecord evidenceに明示されているものだけ",
+		"公式技名・コマンド・フレーム",
+		"未登録のキャラ固有情報は推測しない",
+		"ジャストパリィとDI返しは別の行動",
+		"因果証明を示す表現は禁止",
+	} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("system prompt missing %q:\n%s", expected, prompt)
+		}
+	}
+}
+
+func TestSelectCharacterKnowledgeMovesForDriveImpactIsSmallAndRelevant(t *testing.T) {
+	moves := []model.SF6CharacterMove{
+		{Source: "frame", Category: "共通システム", Name: "ドライブインパクト（トゥインクルキック）", Command: "強強", Startup: "26", BlockAdvantage: "-3"},
+		{Source: "frame", Category: "共通システム", Name: "ドライブリバーサル（リアフライト）", Command: "強強", Startup: "20", BlockAdvantage: "-8"},
+		{Source: "frame", Category: "通常技", Name: "立ち弱P（ライトタッチ）", Command: "弱", Startup: "4", Recovery: "7", BlockAdvantage: "-1", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ弱P（リトルスター）", Command: "弱", Startup: "4", Recovery: "9", BlockAdvantage: "-1", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "立ち中P（スタートーチ）", Command: "中", Startup: "6", Recovery: "13", BlockAdvantage: "0", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ中P（アンダートーチ）", Command: "中", Startup: "7", Recovery: "15", BlockAdvantage: "-1", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ強P（ステラーリング）", Command: "強", Startup: "12", Recovery: "20", BlockAdvantage: "-3", Cancel: "C"},
+		{Source: "frame", Category: "通常技", Name: "しゃがみ強K（オービットキック）", Command: "強", Startup: "10", Recovery: "25", BlockAdvantage: "-12"},
+		{Source: "frame", Category: "必殺技", Name: "サンフレア(Lv3)", Command: "強", Startup: "18", Recovery: "14", BlockAdvantage: "5", Cancel: "SA3"},
+		{Source: "frame", Category: "必殺技", Name: "OD サンライズ", Startup: "14", Recovery: "21", BlockAdvantage: "-3", Cancel: "SA2"},
+		{Source: "frame", Category: "スーパーアーツ", Name: "SA1 サンシャイン(Lv1)", Startup: "11", Recovery: "79", BlockAdvantage: "-99"},
+	}
+
+	selected := selectCharacterKnowledgeMoves(moves, "received_drive_impact", 10)
+	if len(selected) > 10 {
+		t.Fatalf("selected len = %d", len(selected))
+	}
+	seen := map[string]bool{}
+	for _, move := range selected {
+		seen[move.Name] = true
+		if move.Category == "必殺技" || move.Category == "スーパーアーツ" {
+			t.Fatalf("unexpected broad move selected: %#v", move)
+		}
+	}
+	for _, expected := range []string{
+		"ドライブインパクト（トゥインクルキック）",
+		"立ち弱P（ライトタッチ）",
+		"立ち中P（スタートーチ）",
+		"しゃがみ強K（オービットキック）",
+	} {
+		if !seen[expected] {
+			t.Fatalf("missing %q in selected %#v", expected, selected)
+		}
+	}
+}
+
+func TestStaleBenchmarkTargets(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	targets := []model.BenchmarkRefreshTarget{
+		{UserId: "u1", Character: "Ingrid", FetchedAt: ""},
+		{UserId: "u1", Character: "JP", FetchedAt: now.Add(-25 * time.Hour).Format("2006-01-02 15:04:05")},
+		{UserId: "u1", Character: "Ken", FetchedAt: now.Add(-2 * time.Hour).Format("2006-01-02 15:04:05")},
+	}
+	stale := staleBenchmarkTargets(targets, now, 24*time.Hour)
+	if len(stale) != 2 {
+		t.Fatalf("stale len = %d, want 2: %#v", len(stale), stale)
+	}
+	if stale[0].Character != "Ingrid" || stale[1].Character != "JP" {
+		t.Fatalf("stale targets = %#v", stale)
+	}
+}
+
+func TestLatestPlayStatsFresh(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	if latestPlayStatsFresh(nil, now, time.Hour) {
+		t.Fatal("nil snapshot should be stale")
+	}
+	if !latestPlayStatsFresh(&model.PlayStatsSnapshot{
+		SnapshotAt: now.Add(-30 * time.Minute).Format("2006-01-02 15:04:05"),
+	}, now, time.Hour) {
+		t.Fatal("recent snapshot should be fresh")
+	}
+	if latestPlayStatsFresh(&model.PlayStatsSnapshot{
+		SnapshotAt: now.Add(-2 * time.Hour).Format("2006-01-02 15:04:05"),
+	}, now, time.Hour) {
+		t.Fatal("old snapshot should be stale")
+	}
+}
+
 func TestIsPunkRecordSearchNoise(t *testing.T) {
-	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_candidate:1766731922:74", "adviceaction", "") {
-		t.Fatal("expected advice_candidate id to be recursive")
+	if isPunkRecordSearchNoise("sf6-advice:gen1:advice_candidate:1766731922:74", "adviceaction", "DI被弾削減 advice") {
+		t.Fatal("advice_candidate should remain searchable as prior advice")
 	}
 	if !isPunkRecordSearchNoise("sf6-advice:gen1:advice_evidence:1766731922:75:vegapunk:message", "evidence", "") {
 		t.Fatal("expected advice_evidence id to be recursive")
@@ -293,6 +380,108 @@ func TestIsPunkRecordSearchNoise(t *testing.T) {
 	}
 	if isPunkRecordSearchNoise("sf6-advice:gen1:metric-just_parry", "metric", "Perfect Parry / Just Parry") {
 		t.Fatal("metric id should not be recursive")
+	}
+}
+
+func TestPriorAdviceForPromptFromRunsKeepsPunkRecordCandidates(t *testing.T) {
+	got := priorAdviceForPromptFromRuns([]*model.AdviceRun{{
+		CreatedAt: "2026-06-01 10:00:00",
+		Candidates: []*model.AdviceCandidate{{
+			Mode:   model.AdviceModeDBOnly,
+			Theme:  "DB only should be skipped",
+			Action: "skip",
+		}, {
+			Mode:            model.AdviceModePunkRecordOpus46,
+			Theme:           "DI被弾削減",
+			Action:          "DI警戒ゾーンを決める",
+			SuccessCriteria: "DI被弾を1.2以下にする",
+			WatchMetrics:    "DI被弾, パニカン被弾",
+			Risks:           "守りすぎる",
+		}},
+	}}, 3)
+	if len(got) != 1 {
+		t.Fatalf("prior advice count = %d, want 1", len(got))
+	}
+	if got[0].Theme != "DI被弾削減" || got[0].Action != "DI警戒ゾーンを決める" {
+		t.Fatalf("unexpected prior advice: %#v", got[0])
+	}
+}
+
+func TestRankPunkRecordEvidencePrioritizesSameMetricAdvice(t *testing.T) {
+	top := adviceSignal{key: "received_punish_counter", label: "パニカン被弾"}
+	got := rankPunkRecordEvidence([]model.AdviceEvidence{
+		{Source: "vegapunk", Title: "DI被弾の削減", Text: "DI被弾の古い施策", Score: 0.90},
+		{Source: "vegapunk", Title: "パニカン被弾の継続削減 advice", Text: "前回 監視 継続", Score: 0.20},
+		{Source: "vegapunk", Title: "一般攻略", Text: "ガードする", Score: 0.50},
+	}, top)
+	if got[0].Title != "パニカン被弾の継続削減 advice" {
+		t.Fatalf("top evidence = %q, want same metric prior advice", got[0].Title)
+	}
+	if got[0].Score != 0.20 {
+		t.Fatalf("display score should keep original search score, got %v", got[0].Score)
+	}
+}
+
+func TestFilterPunkRecordEvidenceForDisplayDedupesAndDropsOffMetricAdvice(t *testing.T) {
+	top := adviceSignal{key: "received_punish_counter", label: "パニカン被弾"}
+	got := filterPunkRecordEvidenceForDisplay([]model.AdviceEvidence{
+		{Source: "vegapunk", Title: "パニカン被弾の継続削減 ― ガード継続", Text: "前回施策"},
+		{Source: "vegapunk", Title: "パニカン被弾の継続削減 ― 暴れ分類", Text: "類似施策"},
+		{Source: "vegapunk", Title: "DI被弾の削減", Text: "DI被弾の古い施策"},
+		{Source: "vegapunk", Title: "パニカン被弾の削減：不用意な技振り", Text: "別施策"},
+		{Source: "vegapunk", Title: "パニカン被弾の起き上がり対策", Text: "別施策2"},
+		{Source: "vegapunk", Title: "パニカン被弾の中距離対策", Text: "別施策3"},
+	}, top, 3)
+	if len(got) != 3 {
+		t.Fatalf("filtered evidence count = %d, want 3: %#v", len(got), got)
+	}
+	for _, ev := range got {
+		if strings.Contains(ev.Title+ev.Text, "DI被弾") {
+			t.Fatalf("off-metric DI advice should be hidden: %#v", ev)
+		}
+	}
+	if got[0].Title != "パニカン被弾の継続削減 ― ガード継続" {
+		t.Fatalf("first evidence changed unexpectedly: %#v", got[0])
+	}
+	if got[1].Title == "パニカン被弾の継続削減 ― 暴れ分類" {
+		t.Fatalf("similar duplicate should have been removed: %#v", got)
+	}
+}
+
+func TestEnsureAdviceSummarySectionsAddsImprovedAndNeeds(t *testing.T) {
+	candidate := &model.AdviceCandidate{Summary: "既存要約"}
+	ensureAdviceSummarySections(candidate, []adviceSignalForPrompt{{
+		Label:      "パニカン被弾",
+		Self:       0.8,
+		Benchmark:  0.56,
+		Trend:      -0.1,
+		HigherGood: false,
+	}, {
+		Label:      "投げ",
+		Self:       1.7,
+		Benchmark:  2.68,
+		Trend:      0.7,
+		HigherGood: true,
+	}})
+	if !strings.Contains(candidate.Summary, "良くなった点") {
+		t.Fatalf("summary should include improvement section: %s", candidate.Summary)
+	}
+	if !strings.Contains(candidate.Summary, "改善すべき点") {
+		t.Fatalf("summary should include needs section: %s", candidate.Summary)
+	}
+	if !strings.Contains(candidate.Summary, "パニカン被弾が改善方向") {
+		t.Fatalf("summary should mention improved metric: %s", candidate.Summary)
+	}
+}
+
+func TestSummarizePunkRecordEvidenceTrimsRawAdvicePrefixAndLength(t *testing.T) {
+	text := "punk_record_opus_4_6 advice: " + strings.Repeat("パニカン被弾の継続削減 ", 50)
+	got := summarizePunkRecordEvidence(text)
+	if strings.Contains(got, "punk_record_opus_4_6 advice:") {
+		t.Fatalf("raw advice prefix should be hidden: %s", got)
+	}
+	if len([]rune(got)) > 363 {
+		t.Fatalf("summary too long: %d runes", len([]rune(got)))
 	}
 }
 

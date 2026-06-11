@@ -70,9 +70,28 @@ type PlayStatsSnapshot struct {
 	ExtremeSeconds      int `db:"extreme_seconds" json:"extremeSeconds"`
 }
 
-// MatchWithStats joins one Match row with its corresponding play stats
-// snapshot (if any). Stats is nil when no snapshot exists for the match.
+// MatchPlayStats stores the derived, per-match stats calculated at acquisition
+// time from adjacent /play aggregate snapshots.
+type MatchPlayStats struct {
+	Id                    int64   `db:"id" json:"id"`
+	UserId                string  `db:"user_id" json:"userId"`
+	MatchReplayId         string  `db:"match_replay_id" json:"matchReplayId"`
+	SnapshotId            int64   `db:"snapshot_id" json:"snapshotId"`
+	PreviousSnapshotId    int64   `db:"previous_snapshot_id" json:"previousSnapshotId"`
+	ComputedAt            string  `db:"computed_at" json:"computedAt"`
+	DriveImpact           float64 `db:"drive_impact" json:"driveImpact"`
+	ReceivedDriveImpact   float64 `db:"received_drive_impact" json:"receivedDriveImpact"`
+	JustParry             float64 `db:"just_parry" json:"justParry"`
+	ThrowTech             float64 `db:"throw_tech" json:"throwTech"`
+	CornerTime            float64 `db:"corner_time" json:"cornerTime"`
+	CorneredTime          float64 `db:"cornered_time" json:"corneredTime"`
+	ThrowCount            float64 `db:"throw_count" json:"throwCount"`
+	ReceivedPunishCounter float64 `db:"received_punish_counter" json:"receivedPunishCounter"`
+}
+
+// MatchWithStats joins one Match row with its corresponding derived per-match
+// stats (if any). Stats is nil when no per-match stats were saved.
 type MatchWithStats struct {
-	Match Match              `json:"match"`
-	Stats *PlayStatsSnapshot `json:"stats"`
+	Match Match           `json:"match"`
+	Stats *MatchPlayStats `json:"stats"`
 }

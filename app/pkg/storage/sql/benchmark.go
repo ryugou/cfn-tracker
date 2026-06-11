@@ -102,3 +102,27 @@ func (s *Storage) GetBenchmarkPlayers(
 	}
 	return rows, nil
 }
+
+func (s *Storage) GetBenchmarkRefreshTargets(ctx context.Context) ([]model.BenchmarkRefreshTarget, error) {
+	rows := []model.BenchmarkRefreshTarget{}
+	if err := s.db.SelectContext(ctx, &rows, `
+		WITH user_chars AS (
+			SELECT DISTINCT user_id, character
+			FROM matches
+			WHERE user_id != '' AND character != ''
+		)
+		SELECT
+			uc.user_id,
+			uc.character,
+			COALESCE(MAX(bp.fetched_at), '') AS fetched_at
+		FROM user_chars uc
+		LEFT JOIN benchmark_players bp
+			ON bp.source_user_id = uc.user_id
+			AND bp.character = uc.character
+		GROUP BY uc.user_id, uc.character
+		ORDER BY uc.user_id ASC, uc.character ASC
+	`); err != nil {
+		return nil, fmt.Errorf("select benchmark refresh targets: %w", err)
+	}
+	return rows, nil
+}

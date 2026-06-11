@@ -3,14 +3,12 @@ import { useSelector } from '@xstate/react'
 import { Outlet } from 'react-router-dom'
 
 import { AuthMachineContext } from '@/state/auth-machine'
-import { TrackingMachineContext } from '@/state/tracking-machine'
 
 import { AppSidebar } from './app-sidebar'
 
 export function AppWrapper() {
   const authState = AuthMachineContext.useSelector(({ value }) => value)
-  const trackingState = TrackingMachineContext.useSelector(({ value }) => value)
-  const showSidebar = authState === 'connected' && trackingState === 'tracking'
+  const showSidebar = authState === 'connected'
 
   return (
     <>

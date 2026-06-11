@@ -332,6 +332,7 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			go browserSrcServer.Start(ctx, &cfg)
 			go cmd.StartVegapunkSyncQueue(ctx, sqlDb)
+			cmd.StartAutoDataRefresh(ctx, cmdHandler)
 		},
 		OnShutdown: func(_ context.Context) {
 			appBrowser.Page.Browser().Close()

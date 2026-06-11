@@ -7,6 +7,7 @@ type Match struct {
 	ReplayID          string `db:"replay_id" json:"replayId"`
 	Character         string `db:"character" json:"character"`
 	LP                int    `db:"lp" json:"lp"`
+	LeagueRank        int    `db:"league_rank" json:"leagueRank"`
 	LPGain            int    `db:"lp_gain" json:"lpGain" txt:"gain"`
 	MR                int    `db:"mr" json:"mr"`
 	MRGain            int    `db:"mr_gain" json:"mrGain" txt:"gain"`

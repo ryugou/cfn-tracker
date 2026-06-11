@@ -19,7 +19,12 @@ export const AUTH_MACHINE = setup({
   actions: {
     selectGame: ({ context, self }) => {
       if (context.game) {
-        SelectGame(context.game).catch(error => self.send({ type: 'error', error }))
+        SelectGame(context.game)
+          .then(() => {
+            self.send({ type: 'loaded', progress: 100 })
+            self.send({ type: 'finished' })
+          })
+          .catch(error => self.send({ type: 'error', error }))
       }
     },
     subscribeToProgressEvents: ({ self }) => {
@@ -53,8 +58,8 @@ export const AUTH_MACHINE = setup({
               game: ({ event }) => event.game,
               error: null
             }),
-            'selectGame',
-            'subscribeToProgressEvents'
+            'subscribeToProgressEvents',
+            'selectGame'
           ],
           target: 'loading'
         }
