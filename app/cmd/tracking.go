@@ -36,6 +36,7 @@ type TrackingHandler struct {
 	forcePollChan chan struct{}
 	gameTracker   tracker.GameTracker
 	eventEmitter  EventEmitFn
+	onSF6AuthDone func()
 }
 
 func NewTrackingHandler(
@@ -45,16 +46,18 @@ func NewTrackingHandler(
 	nosqlDb *cfgDb.Storage,
 	txtDb *txt.Storage,
 	cfg *config.BuildConfig,
+	onSF6AuthDone func(),
 	matchChans ...chan model.Match,
 ) *TrackingHandler {
 	return &TrackingHandler{
-		wavuClient: wavuClient,
-		cfnClient:  cfnClient,
-		sqlDb:      sqlDb,
-		nosqlDb:    nosqlDb,
-		txtDb:      txtDb,
-		cfg:        cfg,
-		matchChans: matchChans,
+		wavuClient:    wavuClient,
+		cfnClient:     cfnClient,
+		sqlDb:         sqlDb,
+		nosqlDb:       nosqlDb,
+		txtDb:         txtDb,
+		cfg:           cfg,
+		onSF6AuthDone: onSF6AuthDone,
+		matchChans:    matchChans,
 	}
 }
 
@@ -310,6 +313,9 @@ func (ch *TrackingHandler) SelectGame(game model.GameType) error {
 			close(authChan)
 			break
 		}
+	}
+	if game == model.GameTypeSF6 && ch.onSF6AuthDone != nil {
+		ch.onSF6AuthDone()
 	}
 	return nil
 }

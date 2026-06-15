@@ -275,6 +275,15 @@ func main() {
 		noSqlDb,
 		txtDb,
 		&cfg,
+		func() {
+			go func() {
+				if imported, err := cmdHandler.RefreshMissingMatchesNow(); err != nil {
+					slog.Warn("sf6 data refresh after auth failed", slog.Any("error", err), slog.Int("imported", imported))
+				} else {
+					slog.Info("sf6 data refresh after auth finished", slog.Int("imported", imported))
+				}
+			}()
+		},
 		browserSrcMatchChan,
 	)
 
