@@ -53,6 +53,10 @@ func (c *Client) GetBattleLogPage(ctx context.Context, cfn string, page int) (*B
 	if err := p.WaitLoad(); err != nil {
 		return nil, fmt.Errorf("wait for cfn to load: %w", err)
 	}
+	currentURL := p.MustInfo().URL
+	if !strings.Contains(currentURL, "/buckler/profile/") {
+		return nil, fmt.Errorf("battle log redirected away from profile, current url: %s", currentURL)
+	}
 	nextData, err := p.Element("#__NEXT_DATA__")
 	if err != nil {
 		return nil, fmt.Errorf("get next_data element: %w", err)
