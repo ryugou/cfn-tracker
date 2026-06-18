@@ -138,35 +138,22 @@ func isGoTestProcess() bool {
 }
 
 func read1PasswordSecret(ref string) (string, error) {
-	for {
-		cmd := exec.Command("op", "read", ref)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		out, err := cmd.Output()
-		if err == nil {
-			secret := strings.TrimSpace(string(out))
-			if secret == "" {
-				return "", fmt.Errorf("read 1Password reference %q: empty value", ref)
-			}
-			return secret, nil
+	cmd := exec.Command("op", "read", ref)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err == nil {
+		secret := strings.TrimSpace(string(out))
+		if secret == "" {
+			return "", fmt.Errorf("read 1Password reference %q: empty value", ref)
 		}
-		detail := strings.TrimSpace(stderr.String())
-		if isRetryable1PasswordError(detail) {
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		if detail != "" {
-			return "", fmt.Errorf("read 1Password reference %q: %w: %s", ref, err, detail)
-		}
-		return "", fmt.Errorf("read 1Password reference %q: %w", ref, err)
+		return secret, nil
 	}
-}
-
-func isRetryable1PasswordError(detail string) bool {
-	detail = strings.ToLower(detail)
-	return strings.Contains(detail, "authorization timeout") ||
-		strings.Contains(detail, "couldn't connect to the 1password desktop app") ||
-		strings.Contains(detail, "could not connect to the 1password desktop app")
+	detail := strings.TrimSpace(stderr.String())
+	if detail != "" {
+		return "", fmt.Errorf("read 1Password reference %q: %w: %s", ref, err, detail)
+	}
+	return "", fmt.Errorf("read 1Password reference %q: %w", ref, err)
 }
 
 func envFilePath() string {
