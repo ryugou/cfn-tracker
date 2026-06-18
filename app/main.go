@@ -119,7 +119,7 @@ func loadEnvFile(path string, resolve1Password bool) error {
 	}
 	for key, value := range values {
 		value = strings.TrimSpace(value)
-		if resolve1Password && strings.HasPrefix(value, "op://") {
+		if resolve1Password && strings.HasPrefix(value, "op://") && shouldResolve1PasswordAtStartup(key) {
 			resolved, err := read1PasswordSecret(value)
 			if err != nil {
 				return err
@@ -131,6 +131,15 @@ func loadEnvFile(path string, resolve1Password bool) error {
 		}
 	}
 	return nil
+}
+
+func shouldResolve1PasswordAtStartup(key string) bool {
+	switch key {
+	case "CAP_ID_EMAIL", "CAP_ID_PASSWORD":
+		return true
+	default:
+		return false
+	}
 }
 
 func isGoTestProcess() bool {
