@@ -152,7 +152,6 @@ func read1PasswordSecret(ref string) (string, error) {
 		}
 		detail := strings.TrimSpace(stderr.String())
 		if isRetryable1PasswordError(detail) {
-			slog.Warn("waiting for 1Password authorization", slog.String("ref", ref), slog.String("detail", detail))
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -279,8 +278,6 @@ func main() {
 			go func() {
 				if imported, err := cmdHandler.RefreshMissingMatchesNow(); err != nil {
 					slog.Warn("sf6 data refresh after auth failed", slog.Any("error", err), slog.Int("imported", imported))
-				} else {
-					slog.Info("sf6 data refresh after auth finished", slog.Int("imported", imported))
 				}
 			}()
 		},
